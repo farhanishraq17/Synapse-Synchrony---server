@@ -5,7 +5,7 @@ import {
   generateTokenandSetCookie,
   generateVerficationToken,
 } from '../utils/utils.js';
-import { sendVerificationEmail } from '../mailtrap/emails.js';
+import { sendVerificationEmail, sendWelcomeEmail } from '../mailtrap/emails.js';
 
 export const signup = async (req, res) => {
   const { email, password, name } = req.body;
@@ -37,6 +37,34 @@ export const signup = async (req, res) => {
     });
   } catch (error) {
     console.error('Error during signup:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+
+export const VerifyEmail = async (req, res) => {
+  const { code } = req.body;
+
+  try {
+    const user = await User.findOne({
+      verificationToken: code,
+      verificationTokenExpiresAt: { $gt: new Date() },
+    });
+    if (!user) {
+      return HttpResponse(
+        res,
+        400,
+        true,
+        'Invalid or expired verification token'
+      );
+    }
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpiresAt = undefined;
+    await user.save();
+    await sendWelcomeEmail(user.email, user.name);
+    return HttpResponse(res, 200, false, 'Email verified successfully');
+  } catch (error) {
+    console.error('Error during email verification:', error);
     return HttpResponse(res, 500, true, 'Internal Server Error');
   }
 };
