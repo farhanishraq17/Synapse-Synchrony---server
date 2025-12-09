@@ -4,7 +4,7 @@ import { VERIFICATION_EMAIL_TEMPLATE, WELCOME_EMAIL_TEMPLATE } from '../mailtrap
 
 export const sendVerificationEmail = async (email, verificationToken) => {
   const apiKey =
-    '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';
+    process.env.BREVO_API_KEY;
   const url = 'https://api.brevo.com/v3/smtp/email';
 
   const emailData = {
@@ -37,47 +37,12 @@ export const sendVerificationEmail = async (email, verificationToken) => {
   }
 };
 
-// // Password Reset Email Template
-// export const sendPasswordResetEmail = async (email, resetURL) => {
-//   const apiKey =
-//     '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';
-//   const url = 'https://api.brevo.com/v3/smtp/email';
 
-//   const emailData = {
-//     sender: {
-//       name: 'Farhan Tahsin Khan',
-//       email: 'farhankhan@iut-dhaka.edu',
-//     },
-//     to: [
-//       {
-//         email: email,
-//       },
-//     ],
-//     subject: 'Reset your password',
-//     htmlContent: PASSWORD_RESET_REQUEST_TEMPLATE.replace(
-//       '{resetURL}',
-//       resetURL
-//     ),
-//   };
-
-//   try {
-//     const response = await axios.post(url, emailData, {
-//       headers: {
-//         'Content-Type': 'application/json',
-//         'api-Key': apiKey,
-//       },
-//     });
-//     console.log('Forgot Password email sent successfully:', response.data);
-//   } catch (error) {
-//     console.error(`Error sending password reset email:`, error);
-//     throw new Error(`Error sending password reset email: ${error}`);
-//   }
-// };
 
 // Send Welcome Email via Brevo (Sendinblue)
 export const sendWelcomeEmail = async (email, name) => {
   const apiKey =
-    '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';
+    process.env.BREVO_API_KEY;
   const url = 'https://api.brevo.com/v3/smtp/email';
 
   // Hardcoded company information
