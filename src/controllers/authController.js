@@ -66,7 +66,9 @@ export const VerifyEmail = async (req, res) => {
     user.verificationTokenExpiresAt = undefined;
     await user.save();
     await sendWelcomeEmail(user.email, user.name);
-    return HttpResponse(res, 200, false, 'Email verified successfully');
+    return HttpResponse(res, 200, false, 'Email verified successfully', {
+      user: { ...user._doc, password: undefined },
+    });
   } catch (error) {
     console.error('Error during email verification:', error);
     return HttpResponse(res, 500, true, 'Internal Server Error');

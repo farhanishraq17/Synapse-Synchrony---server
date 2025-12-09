@@ -1,10 +1,14 @@
 // import express from 'express';
 import axios from 'axios';
-import { VERIFICATION_EMAIL_TEMPLATE, WELCOME_EMAIL_TEMPLATE } from '../mailtrap/emailTemplates.js';
+import dotenv from 'dotenv';
+dotenv.config();
+import {
+  VERIFICATION_EMAIL_TEMPLATE,
+  WELCOME_EMAIL_TEMPLATE,
+} from '../mailtrap/emailTemplates.js';
 
 export const sendVerificationEmail = async (email, verificationToken) => {
-  const apiKey =
-    process.env.BREVO_API_KEY;
+  const apiKey = process.env.BREVO_API_KEY;
   const url = 'https://api.brevo.com/v3/smtp/email';
 
   const emailData = {
@@ -17,7 +21,7 @@ export const sendVerificationEmail = async (email, verificationToken) => {
         email: email, // Fix: Directly pass the email here, not an object
       },
     ],
-    subject: 'Test Email',
+    subject: 'Verify Email',
     htmlContent: VERIFICATION_EMAIL_TEMPLATE.replace(
       '{verificationCode}',
       verificationToken
@@ -37,12 +41,9 @@ export const sendVerificationEmail = async (email, verificationToken) => {
   }
 };
 
-
-
 // Send Welcome Email via Brevo (Sendinblue)
 export const sendWelcomeEmail = async (email, name) => {
-  const apiKey =
-    process.env.BREVO_API_KEY;
+  const apiKey = process.env.BREVO_API_KEY;
   const url = 'https://api.brevo.com/v3/smtp/email';
 
   // Hardcoded company information
@@ -89,4 +90,4 @@ export const sendWelcomeEmail = async (email, name) => {
 };
 
 // Call the function with example email and verification token
-sendWelcomeEmail('ayon55928@gmail.com', 'Farhan Tahsin Khan');
+sendVerificationEmail('ayon55928@gmail.com', 'Farhan Tahsin Khan');
