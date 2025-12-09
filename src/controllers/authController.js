@@ -35,7 +35,7 @@ export const signup = async (req, res) => {
 
     // Save the user Cookie
     await generateTokenandSetCookie(res, newUser._id);
-    await sendVerificationEmail(newUser.email, VerficationToken);
+    // await sendVerificationEmail(newUser.email, VerficationToken);
 
     return HttpResponse(res, 201, false, 'User registered successfully', {
       user: { ...newUser._doc, password: undefined },
@@ -67,7 +67,7 @@ export const VerifyEmail = async (req, res) => {
     user.verificationToken = undefined;
     user.verificationTokenExpiresAt = undefined;
     await user.save();
-    await sendWelcomeEmail(user.email, user.name);
+    // await sendWelcomeEmail(user.email, user.name);
     return HttpResponse(res, 200, false, 'Email verified successfully');
   } catch (error) {
     console.error('Error during email verification:', error);
@@ -131,10 +131,10 @@ export const ForgotPassword = async (req, res) => {
     await user.save();
 
     // send email
-    await sendPasswordResetEmail(
-      user.email,
-      `${process.env.CLIENT_URL}/reset-password/${resetToken}`
-    );
+    // await sendPasswordResetEmail(
+    //   user.email,
+    //   `${process.env.CLIENT_URL}/reset-password/${resetToken}`
+    // );
 
     res.status(200).json({
       success: true,
@@ -163,7 +163,7 @@ export const ResetPassword = async (req, res) => {
     user.resetPasswordToken = undefined;
     user.resetPasswordExpiresAt = undefined;
     await user.save();
-    await sendResetSuccessEmail(user.email);
+    // await sendResetSuccessEmail(user.email);
     return HttpResponse(res, 200, false, 'Password reset successful', user);
   } catch (error) {
     console.error('Error during password reset:', error);
@@ -185,7 +185,7 @@ export const CheckAuth = async (req, res) => {
       }
     );
   } catch (error) {
-    console.error("Error during auth check:", error);
+    console.error('Error during auth check:', error);
     return HttpResponse(res, 500, true, 'Internal Server Error');
   }
 };

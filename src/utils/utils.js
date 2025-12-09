@@ -10,7 +10,7 @@ export const generateTokenandSetCookie = (res, userId) => {
 
   res.cookie('token', token, {
     httpOnly: true, // XSS Attack protection
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' ? true : false, // Set to false in local environment
     sameSite: 'strict', // CSRF Attack protection
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
