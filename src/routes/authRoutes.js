@@ -1,6 +1,7 @@
 import express from 'express';
 import { HttpResponse } from '../utils/HttpResponse.js';
 import {
+  CheckAuth,
   ForgotPassword,
   login,
   logout,
@@ -8,9 +9,10 @@ import {
   signup,
   VerifyEmail,
 } from '../controllers/authController.js';
+import { VerifyToken } from '../middlewares/VeriyToken.js';
 
 const router = express.Router();
-
+router.get('/check-auth', VerifyToken, CheckAuth);
 router.post('/signup', signup);
 router.post('/login', login);
 router.post('/logout', logout);

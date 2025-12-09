@@ -170,3 +170,22 @@ export const ResetPassword = async (req, res) => {
     return HttpResponse(res, 500, true, 'Internal Server Error');
   }
 };
+
+export const CheckAuth = async (req, res) => {
+  try {
+    const user = await User.findOne({ _id: req.userId });
+    if (!user) return HttpResponse(res, 404, true, 'User not found');
+    return HttpResponse(
+      res,
+      200,
+      false,
+      'User Successfully Fetched and Authenticated',
+      {
+        user: { ...user._doc, password: undefined },
+      }
+    );
+  } catch (error) {
+    console.error("Error during auth check:", error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
