@@ -6,7 +6,12 @@ import {
   generateTokenandSetCookie,
   generateVerficationToken,
 } from '../utils/utils.js';
-import { sendPasswordResetEmail, sendVerificationEmail, sendWelcomeEmail } from '../mailtrap/emails.js';
+import {
+  sendPasswordResetEmail,
+  sendResetSuccessEmail,
+  sendVerificationEmail,
+  sendWelcomeEmail,
+} from '../mailtrap/emails.js';
 
 export const signup = async (req, res) => {
   const { email, password, name } = req.body;
@@ -138,5 +143,30 @@ export const ForgotPassword = async (req, res) => {
   } catch (error) {
     console.log('Error in forgotPassword ', error);
     res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const ResetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) return HttpResponse(res, 400, true, 'Token is required');
+    const { password } = req.body;
+    if (!password) return HttpResponse(res, 400, true, 'Password is required');
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpiresAt: { $gt: new Date() },
+    });
+    if (!user) return HttpResponse(res, 400, true, 'Invalid or expired token');
+    // Update the password, the user data and save those to the DB
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpiresAt = undefined;
+    await user.save();
+    await sendResetSuccessEmail(user.email);
+    return HttpResponse(res, 200, false, 'Password reset successful', user);
+  } catch (error) {
+    console.error('Error during password reset:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
   }
 };

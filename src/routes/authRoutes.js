@@ -1,9 +1,10 @@
 import express from 'express';
 import { HttpResponse } from '../utils/HttpResponse.js';
 import {
-    ForgotPassword,
+  ForgotPassword,
   login,
   logout,
+  ResetPassword,
   signup,
   VerifyEmail,
 } from '../controllers/authController.js';
@@ -15,4 +16,5 @@ router.post('/login', login);
 router.post('/logout', logout);
 router.post('/verify-email', VerifyEmail);
 router.post('/forgot-password', ForgotPassword);
+router.post('/reset-password/:token', ResetPassword);
 export default router;
