@@ -7,11 +7,9 @@ import {
   generateVerficationToken,
 } from '../utils/utils.js';
 import {
-  sendPasswordResetEmail,
-  sendResetSuccessEmail,
   sendVerificationEmail,
   sendWelcomeEmail,
-} from '../mailtrap/emails.js';
+} from '../Brevo/Brevoemail.js';
 
 export const signup = async (req, res) => {
   const { email, password, name } = req.body;
@@ -35,7 +33,7 @@ export const signup = async (req, res) => {
 
     // Save the user Cookie
     await generateTokenandSetCookie(res, newUser._id);
-    // await sendVerificationEmail(newUser.email, VerficationToken);
+    await sendVerificationEmail(newUser.email, VerficationToken);
 
     return HttpResponse(res, 201, false, 'User registered successfully', {
       user: { ...newUser._doc, password: undefined },
@@ -67,7 +65,7 @@ export const VerifyEmail = async (req, res) => {
     user.verificationToken = undefined;
     user.verificationTokenExpiresAt = undefined;
     await user.save();
-    // await sendWelcomeEmail(user.email, user.name);
+    await sendWelcomeEmail(user.email, user.name);
     return HttpResponse(res, 200, false, 'Email verified successfully');
   } catch (error) {
     console.error('Error during email verification:', error);
