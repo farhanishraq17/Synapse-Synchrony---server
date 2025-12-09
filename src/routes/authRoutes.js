@@ -1,12 +1,18 @@
 import express from 'express';
 import { HttpResponse } from '../utils/HttpResponse.js';
-import { login, logout, signup, VerifyEmail } from '../controllers/authController.js';
-
+import {
+    ForgotPassword,
+  login,
+  logout,
+  signup,
+  VerifyEmail,
+} from '../controllers/authController.js';
 
 const router = express.Router();
 
 router.post('/signup', signup);
-router.get('/login', login);
-router.get('/logout', logout);
+router.post('/login', login);
+router.post('/logout', logout);
 router.post('/verify-email', VerifyEmail);
+router.post('/forgot-password', ForgotPassword);
 export default router;

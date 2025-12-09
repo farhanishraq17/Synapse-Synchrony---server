@@ -36,4 +36,4 @@ const UserSchema = new mongoose.Schema(
 
 const User = mongoose.model('User', UserSchema, 'users');
 export default User;
-// jobs is the Collection Name
+// users is the Collection Name
