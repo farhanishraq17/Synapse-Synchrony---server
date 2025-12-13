@@ -1,0 +1,8 @@
+How to run this agent? 
+
+
+1) Go to the directory "Synapse age from your terminal"
+2) Move into virtual environment by running the following(remove indentation) : ".\venv\Scripts\activate"
+3) Install all the requirements from requirements.txt using(remove indentation) : "pip install -r requirements.txt"
+4) run "main.py" file
+

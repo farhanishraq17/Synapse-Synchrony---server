@@ -14,6 +14,10 @@ genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-2.5-flash')
 
 # Generate response
-response = model.generate_content("What is the capital of France?")
+
+print("What would you like to ask me?")
+user_input = input("Your question: ")
+
+response = model.generate_content(user_input)
 
 print(f"\nResponse: {response.text}")
