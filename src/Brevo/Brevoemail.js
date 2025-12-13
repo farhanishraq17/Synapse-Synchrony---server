@@ -90,4 +90,4 @@ export const sendWelcomeEmail = async (email, name) => {
 };
 
 // Call the function with example email and verification token
-sendVerificationEmail('ayon55928@gmail.com', 'Farhan Tahsin Khan');
+// sendVerificationEmail('ayon55928@gmail.com', 'Farhan Tahsin Khan');
