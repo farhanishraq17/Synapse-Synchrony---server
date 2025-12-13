@@ -4,6 +4,10 @@ import os
 
 load_dotenv() 
 
+generation_config = genai.GenerationConfig(
+    max_output_tokens=150
+)
+
 # Configure the API key
 api_key = os.getenv('GOOGLE_API_KEY')
 print(f"API Key loaded: {api_key is not None}")
