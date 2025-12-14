@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import { apiRateLimiter } from './middleware/rateLimiter.js';
 import messageRoutes from './routes/message.js';
+import searchRoutes from './routes/search.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -37,6 +38,9 @@ app.use(cookieParser());
 
 // Add route (after conversation routes)
 app.use('/api/conversations', messageRoutes);
+
+// Add route (after conversation and message routes)
+app.use('/api/search', searchRoutes);
 
 
 // Serve static files from 'public' directory
