@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import { apiRateLimiter } from './middleware/rateLimiter.js';
+import messageRoutes from './routes/message.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -33,6 +34,10 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Add route (after conversation routes)
+app.use('/api/conversations', messageRoutes);
+
 
 // Serve static files from 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -71,6 +76,8 @@ app.get('/', (req, res) => {
     }
   });
 });
+
+
 
 // 404 handler
 app.use((req, res, next) => {
