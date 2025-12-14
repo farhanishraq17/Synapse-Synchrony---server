@@ -4,14 +4,19 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import connectDB from './config/db.js';
 import { apiRateLimiter } from './middleware/rateLimiter.js';
-import messageRoutes from './routes/message.js';
-import searchRoutes from './routes/search.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
 import conversationRoutes from './routes/conversation.js';
+import messageRoutes from './routes/message.js';
+import searchRoutes from './routes/search.js';
+
+// Import socket handlers
+import { initializeSocketHandlers } from './socket/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -22,6 +27,26 @@ const __dirname = path.dirname(__filename);
 
 // Initialize Express app
 const app = express();
+
+// Create HTTP server
+const httpServer = createServer(app);
+
+// Initialize Socket.IO
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    credentials: true,
+    methods: ['GET', 'POST'],
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+});
+
+// Initialize socket handlers
+initializeSocketHandlers(io);
+
+// Make io accessible to routes
+app.set('io', io);
 
 // Connect to MongoDB
 connectDB();
@@ -36,13 +61,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Add route (after conversation routes)
-app.use('/api/conversations', messageRoutes);
-
-// Add route (after conversation and message routes)
-app.use('/api/search', searchRoutes);
-
-
 // Serve static files from 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -55,6 +73,9 @@ app.get('/health', (req, res) => {
     success: true,
     message: 'Server is running',
     timestamp: new Date().toISOString(),
+    socket: {
+      connected: io.engine.clientsCount,
+    },
   });
 });
 
@@ -66,6 +87,8 @@ app.get('/test', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/conversations', conversationRoutes);
+app.use('/api/conversations', messageRoutes);
+app.use('/api/search', searchRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -76,19 +99,18 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/health',
       test: '/test',
-      api: '/api'
-    }
+      api: '/api',
+      socket: 'ws://localhost:' + (process.env.PORT || 3001),
+    },
   });
 });
-
-
 
 // 404 handler
 app.use((req, res, next) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
-    path: req.path
+    path: req.path,
   });
 });
 
@@ -104,13 +126,14 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
   console.log(`\n🚀 Server running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API: http://localhost:${PORT}/api`);
   console.log(`💚 Health: http://localhost:${PORT}/health`);
-  console.log(`🧪 Test Page: http://localhost:${PORT}/test\n`);
+  console.log(`🧪 Test Page: http://localhost:${PORT}/test`);
+  console.log(`🔌 Socket.IO: ws://localhost:${PORT}\n`);
 });
 
 export default app;
