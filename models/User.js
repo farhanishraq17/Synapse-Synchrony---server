@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
-import bcrypt from 'bcrypt';
+import mongoose from 'mongoose';  //mongidb library
+import bcrypt from 'bcrypt';    //passwordhashing
 
 /**
  * User Schema - Supports multiple authentication methods

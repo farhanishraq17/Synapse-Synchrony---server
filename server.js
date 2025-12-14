@@ -9,6 +9,13 @@ import configurePassport from './config/passport.js';
 import authRoutes from './routes/authRoutes.js';
 import { apiRateLimiter, authRateLimiter, otpRateLimiter } from './middleware/rateLimiter.js';
 
+// Add this import at the top with other routes
+import conversationRoutes from './routes/conversation.js';
+
+// Add this route registration with other routes (after auth routes)
+app.use('/api/conversations', conversationRoutes);
+
+
 // Load environment variables
 dotenv.config();
 

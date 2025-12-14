@@ -1,0 +1,481 @@
+================================================================================
+CHAT SYSTEM - 10-PIECE BUILD PLAN
+Backend Development Order (Build & Test Incrementally)
+================================================================================
+
+PIECE 1 — DATA MODELS & DATABASE SCHEMAS
+================================================================================
+Purpose:
+  Define MongoDB/Mongoose schemas with proper validation, indexes, and 
+  relationships. Every other layer depends on consistent data shape.
+
+Files:
+  - backend/models/Conversation.js
+  - backend/models/Message.js
+  - backend/models/ReadReceipt.js
+
+Schema Requirements:
+  • Conversation: 
+    - type: 'direct' | 'group'
+    - participants: [{ userId, role, joinedAt }] (embedded)
+    - lastMessage: { text, senderId, timestamp }
+    - createdBy, createdAt, updatedAt
+    - Indexes: (participants.userId), (updatedAt DESC)
+  
+  • Message:
+    - conversationId (indexed)
+    - senderId
+    - content (text)
+    - type: 'text' | 'image' | 'file' (future-ready, default 'text')
+    - attachments: [{ url, mime, size, width, height }] (future-ready, default [])
+    - createdAt, updatedAt
+    - Indexes: (conversationId, createdAt DESC)
+  
+  • ReadReceipt:
+    - conversationId
+    - userId
+    - lastReadMessageId or lastReadAt (timestamp)
+    - Indexes: (conversationId, userId) unique
+
+Dependencies: None (build first)
+
+Debug Checklist:
+  ✓ Create seed script to insert test conversations & messages
+  ✓ Verify indexes are created (check MongoDB Compass or shell)
+  ✓ Test required field validation
+  ✓ Test duplicate prevention on ReadReceipt unique index
+  ✓ Test queries: find by conversationId, paginate messages
+
+
+================================================================================
+PIECE 2 — SHARED AUTHORIZATION HELPERS
+================================================================================
+Purpose:
+  Single source of truth for conversation access checks. Prevents security 
+  bugs by centralizing "can user access this conversation" logic used by 
+  both REST and Socket.IO.
+
+Files:
+  - backend/services/conversationService.js (primary location)
+  - OR create backend/services/authorizationService.js (if you want dedicated)
+
+Core Functions:
+  • assertUserIsMember(userId, conversationId) → throw 403 if not member
+  • assertUserCanModerate(userId, conversationId) → check admin/moderator role
+  • getUserConversations(userId) → return all conversations user is in
+  • isConversationMember(userId, conversationId) → return boolean
+
+Dependencies: Piece 1 (needs Conversation model)
+
+Debug Checklist:
+  ✓ Unit test each function with mock data
+  ✓ Test edge cases: non-existent conversation, non-member, member
+  ✓ Test RBAC: admin can moderate, normal user cannot
+  ✓ Verify errors are consistent JSON format
+
+
+================================================================================
+PIECE 3 — CONVERSATION REST API
+================================================================================
+Purpose:
+  REST endpoints for conversation CRUD operations. Build this before sockets 
+  to establish stable, testable conversation management.
+
+Files:
+  - backend/routes/conversation.js
+  - backend/controllers/conversationController.js
+  - backend/services/conversationService.js
+
+Endpoints:
+  • POST /api/conversations/direct
+    Body: { participantId }
+    - Create 1:1 conversation (idempotent: return existing if found)
+  
+  • POST /api/conversations/group
+    Body: { name, participantIds[] }
+    - Create group conversation
+  
+  • PATCH /api/conversations/:id/name
+    Body: { name }
+    - Rename group (role-guarded: admin/creator only)
+  
+  • GET /api/conversations
+    - List user's conversations (with last message, unread count placeholder)
+  
+  • GET /api/conversations/:id
+    - Get single conversation details
+
+Middleware:
+  - Use existing backend/middleware/auth.js for all routes
+  - Use backend/middleware/roleCheck.js for rename/delete
+
+Dependencies: Piece 1, Piece 2
+
+Debug Checklist:
+  ✓ Test with Postman/Thunder Client + valid JWT
+  ✓ Verify idempotency: creating same 1:1 twice returns same conversation
+  ✓ Test authorization: non-member cannot access conversation details
+  ✓ Test role checks: non-admin cannot rename group
+  ✓ Check consistent JSON response format
+
+
+================================================================================
+PIECE 4 — MEMBERSHIP MANAGEMENT API
+================================================================================
+Purpose:
+  Add/remove members from group conversations with proper authorization.
+  Prevents inconsistent membership states.
+
+Files:
+  - backend/routes/conversation.js (add routes)
+  - backend/controllers/conversationController.js (add methods)
+  - backend/services/conversationService.js (business logic)
+
+Endpoints:
+  • POST /api/conversations/:id/members
+    Body: { userId }
+    - Add member to group (role-guarded: admin/creator)
+  
+  • DELETE /api/conversations/:id/members/:userId
+    - Remove member from group (role-guarded: admin/creator or self-leave)
+
+Business Rules:
+  - Cannot add duplicate members
+  - Cannot remove last admin (if enforcing admin requirement)
+  - Non-members cannot add/remove
+  - Users can always leave (remove themselves)
+
+Dependencies: Piece 2, Piece 3
+
+Debug Checklist:
+  ✓ Test adding existing member (should fail gracefully)
+  ✓ Test removing non-existent member
+  ✓ Test authorization: normal member cannot add others
+  ✓ Test self-removal works for any member
+  ✓ Verify membership array updates correctly in DB
+
+
+================================================================================
+PIECE 5 — MESSAGE REST API (HISTORY & PAGINATION)
+================================================================================
+Purpose:
+  Fetch message history with cursor-based pagination. Build this before 
+  realtime to ensure pagination is stable and debuggable.
+
+Files:
+  - backend/routes/message.js
+  - backend/controllers/messageController.js
+  - backend/services/messageService.js
+  - backend/utils/pagination.js
+
+Endpoints:
+  • GET /api/conversations/:id/messages
+    Query: ?before=<messageId>&limit=50
+    - Fetch messages with cursor pagination (sorted createdAt DESC)
+    - Only members can access
+
+Pagination Logic (utils/pagination.js):
+  - Cursor-based: use messageId or timestamp as cursor
+  - Return: { messages[], hasMore, nextCursor }
+  - Sort: createdAt DESC (newest first for infinite scroll)
+
+Dependencies: Piece 1, Piece 2
+
+Debug Checklist:
+  ✓ Test pagination: fetch first page, then next page with cursor
+  ✓ Verify hasMore flag is accurate
+  ✓ Test authorization: non-member gets 403
+  ✓ Test empty conversation returns []
+  ✓ Test large conversations (seed 1000+ messages, verify performance)
+
+
+================================================================================
+PIECE 6 — SEARCH REST API
+================================================================================
+Purpose:
+  Search users (to start conversations) and search existing conversations.
+  Keep separate from chat logic for performance tuning later.
+
+Files:
+  - backend/routes/search.js
+  - backend/controllers/searchController.js
+  - backend/services/searchService.js
+
+Endpoints:
+  • GET /api/search/users
+    Query: ?q=<searchTerm>&limit=20
+    - Search users by name/email (exclude current user)
+  
+  • GET /api/search/conversations
+    Query: ?q=<searchTerm>
+    - Search user's conversations by name or participant name
+
+Validation:
+  - Min query length: 2 characters
+  - Max query length: 50 characters
+  - Rate limit: existing rate limiter (100 req/15min)
+
+Dependencies: Piece 1, Piece 2 (for conversation access checks)
+
+Debug Checklist:
+  ✓ Test search with valid queries
+  ✓ Test empty results
+  ✓ Test input validation (too short, too long)
+  ✓ Verify only user's conversations are searchable
+  ✓ Test search does not leak other users' private conversations
+
+
+================================================================================
+PIECE 7 — SOCKET AUTHENTICATION & AUTHORIZATION
+================================================================================
+Purpose:
+  Secure Socket.IO connections and room access. Prevents ghost events and 
+  unauthorized room joins. Most security bugs happen here.
+
+Files:
+  - backend/socket/middleware/socketAuth.js
+  - backend/socket/middleware/socketAuthorization.js
+  - backend/socket/middleware/socketRateLimit.js
+  - backend/config/socket.js
+
+socketAuth.js (handshake):
+  - Extract JWT from auth.token or handshake query
+  - Verify JWT using existing jwt.js utility
+  - Attach decoded user to socket.user
+  - Reject connection if invalid/expired
+
+socketAuthorization.js (room access):
+  - Before joining conversation room, verify socket.user is member
+  - Use Piece 2's assertUserIsMember function
+  - Emit error event if unauthorized
+
+socketRateLimit.js:
+  - Throttle message:send (e.g., 10 messages/minute/user)
+  - Throttle typing:start (e.g., 5/minute/conversation)
+  - Use Map to track per-user/per-conversation limits
+
+Dependencies: Piece 1, Piece 2
+
+Debug Checklist:
+  ✓ Test connection with valid JWT (should connect)
+  ✓ Test connection with expired JWT (should reject)
+  ✓ Test connection with no token (should reject)
+  ✓ Test joining conversation as non-member (should fail)
+  ✓ Test rate limiting: send 11 messages quickly (11th should be blocked)
+  ✓ Log all auth failures clearly for debugging
+
+
+================================================================================
+PIECE 8 — SOCKET MESSAGING (SEND → PERSIST → BROADCAST)
+================================================================================
+Purpose:
+  Core realtime flow: receive message event, validate, persist to DB, 
+  broadcast to room. This is the heart of the chat system.
+
+Files:
+  - backend/socket/handlers/messageHandler.js
+  - backend/services/messageService.js
+  - backend/socket/index.js (register handlers)
+
+Events:
+  • Client → Server: 'message:send'
+    Payload: { conversationId, content }
+    - Validate user is member (use Piece 7 auth)
+    - Persist message to DB (messageService.createMessage)
+    - Broadcast 'message:new' to conversation room
+    - Send acknowledgement to sender (success/error)
+  
+  • Server → Clients: 'message:new'
+    Payload: { message: { id, conversationId, senderId, content, createdAt } }
+    - Sent to all room members except sender
+
+  • Client → Server: 'conversation:join'
+    Payload: { conversationId }
+    - Validate member (socketAuthorization)
+    - socket.join(conversationId)
+  
+  • Client → Server: 'conversation:leave'
+    Payload: { conversationId }
+    - socket.leave(conversationId)
+
+Business Rules:
+  - DB write must succeed before broadcast (avoid "message shown but not saved")
+  - Use Socket.IO acknowledgements for send events
+  - Throttle via socketRateLimit middleware
+
+Dependencies: Piece 1, Piece 2, Piece 5, Piece 7
+
+Debug Checklist:
+  ✓ Test sending message to 1:1 conversation
+  ✓ Test sending message to group
+  ✓ Verify message persists in DB before broadcast
+  ✓ Test non-member cannot send (should be blocked by auth)
+  ✓ Test rate limiting: rapid sends get throttled
+  ✓ Use socket.io-client or Postman to simulate multiple clients
+  ✓ Check acknowledgements return success/error correctly
+
+
+================================================================================
+PIECE 9 — TYPING INDICATORS & PRESENCE
+================================================================================
+Purpose:
+  Realtime typing indicators and online/offline status. High-noise events, 
+  so build AFTER messaging works to avoid masking real bugs.
+
+Files:
+  - backend/socket/handlers/typingHandler.js
+  - backend/socket/handlers/presenceHandler.js
+  - backend/socket/handlers/connectionHandler.js
+  - backend/services/presenceService.js
+
+Typing Events:
+  • Client → Server: 'typing:start'
+    Payload: { conversationId }
+    - Throttle (max 1 event per 2 seconds per user per conversation)
+    - Broadcast 'typing:start' to room (exclude sender)
+  
+  • Client → Server: 'typing:stop'
+    Payload: { conversationId }
+    - Broadcast 'typing:stop' to room
+  
+  • Server → Clients: 'typing:start' / 'typing:stop'
+    Payload: { conversationId, userId, userName }
+
+Presence Events:
+  • connectionHandler.js:
+    - On 'connect': set user online, broadcast 'presence:update'
+    - On 'disconnect': set user offline, broadcast 'presence:update'
+  
+  • presenceService.js:
+    - Track online users in-memory (Map or Redis later)
+    - Store lastSeen timestamp in User model on disconnect
+  
+  • Server → Clients: 'presence:update'
+    Payload: { userId, status: 'online' | 'offline', lastSeen }
+
+Throttling:
+  - Typing: max 1 start event per 2 seconds
+  - Presence: debounce updates to avoid spam on connect/disconnect
+
+Dependencies: Piece 7, Piece 8
+
+Debug Checklist:
+  ✓ Test typing indicator appears/disappears
+  ✓ Test typing is scoped to correct conversation room
+  ✓ Test presence updates on connect/disconnect
+  ✓ Test presence only broadcasts to user's contacts/conversation members
+  ✓ Verify throttling works (typing spam doesn't overwhelm server)
+
+
+================================================================================
+PIECE 10 — READ RECEIPTS
+================================================================================
+Purpose:
+  Track which messages users have read. State-heavy and easy to break, 
+  so implement LAST with strong invariants.
+
+Files:
+  - backend/socket/handlers/readReceiptHandler.js
+  - backend/models/ReadReceipt.js
+  - backend/services/messageService.js (update methods)
+
+Events:
+  • Client → Server: 'message:read'
+    Payload: { conversationId, messageId }
+    - Update ReadReceipt: set lastReadMessageId or lastReadAt
+    - Ensure monotonic updates (never move backward in time)
+    - Broadcast 'read:receipt' to conversation room
+  
+  • Server → Clients: 'read:receipt'
+    Payload: { conversationId, userId, lastReadMessageId, readAt }
+    - Only broadcast to conversation members
+
+Business Rules:
+  - "Read" means: user has seen all messages up to messageId
+  - For groups: optionally show "read by X, Y, Z" or just "delivered/read"
+  - For 1:1: show double-check mark or "Seen" indicator
+  - Never allow read timestamp to go backward
+
+Unread Count:
+  - Extend Piece 3's conversation list endpoint to include unread count
+  - Count messages where createdAt > user's lastReadAt
+
+Dependencies: Piece 1, Piece 5, Piece 7, Piece 8
+
+Debug Checklist:
+  ✓ Test marking messages as read
+  ✓ Test unread count decreases after read
+  ✓ Test read receipts only visible to conversation members
+  ✓ Test monotonic invariant: reading older message doesn't reset newer reads
+  ✓ Test group read receipts (if implementing "seen by" list)
+  ✓ Verify UI shows correct read status (integrate with frontend)
+
+
+================================================================================
+DEVELOPMENT ORDER SUMMARY
+================================================================================
+1. Piece 1 (Models) → Independent, build first
+2. Piece 2 (Auth Helpers) → Depends on Piece 1
+3. Piece 3 (Conversation REST) → Depends on Piece 1, 2
+4. Piece 4 (Membership REST) → Depends on Piece 2, 3
+5. Piece 5 (Message REST) → Depends on Piece 1, 2
+6. Piece 6 (Search REST) → Depends on Piece 1, 2
+7. Piece 7 (Socket Auth) → Depends on Piece 1, 2
+8. Piece 8 (Socket Messaging) → Depends on Piece 1, 2, 5, 7
+9. Piece 9 (Typing/Presence) → Depends on Piece 7, 8
+10. Piece 10 (Read Receipts) → Depends on Piece 1, 5, 7, 8
+
+BUILD REST FIRST (Pieces 1-6), THEN SOCKETS (Pieces 7-10)
+
+
+================================================================================
+FUTURE: IMAGE/FILE ATTACHMENTS (NOT IMPLEMENTING NOW)
+================================================================================
+To be image-ready later with minimal changes:
+
+Message Model Changes (add now, use later):
+  - type: { type: String, enum: ['text', 'image', 'file'], default: 'text' }
+  - attachments: [{ 
+      url: String, 
+      mime: String, 
+      size: Number, 
+      width: Number, 
+      height: Number,
+      name: String 
+    }]
+
+Future Files to Add:
+  - backend/routes/upload.js
+  - backend/controllers/uploadController.js
+  - backend/services/uploadService.js
+  - backend/middleware/fileUpload.js (multer or similar)
+
+Upload Flow (when implementing):
+  1. Client uploads file to POST /api/upload (authenticated)
+  2. Server validates file type/size, stores (S3/Cloudinary/local)
+  3. Server returns { url, mime, size, ... }
+  4. Client sends message:send with attachments array
+  5. messageHandler.js handles same way as text (just has attachments)
+
+Frontend Changes (when implementing):
+  - Update MessageInput.jsx to handle file selection
+  - Update MessageItem.jsx to render images/files
+  - Add attachment preview/download logic
+
+
+================================================================================
+TESTING STRATEGY
+================================================================================
+After each piece:
+  1. Write unit tests (models, services, utils)
+  2. Write integration tests (API endpoints with supertest)
+  3. Manual test with Postman/Thunder Client + socket.io-client
+  4. Check MongoDB data directly (Compass/shell)
+  5. Log all errors clearly with context
+
+Never connect pieces until previous piece passes all tests.
+
+
+================================================================================
+END OF BUILD PLAN
+================================================================================
