@@ -20,6 +20,11 @@ import {
   handleUserOffline,
   handleGetOnlineStatus,
 } from './handlers/presenceHandler.js';
+import {
+  handleMarkAsRead,
+  handleGetUnreadCount,
+  handleGetAllUnreadCounts,
+} from './handlers/readReceiptHandler.js';
 
 /**
  * Initialize Socket.IO with authentication and handlers
@@ -126,6 +131,37 @@ export const initializeSocketHandlers = (io) => {
      */
     socket.on('presence:get', (data, callback) => {
       handleGetOnlineStatus(io, socket, data, callback);
+    });
+
+    // ==========================================
+    // READ RECEIPTS
+    // ==========================================
+
+    /**
+     * Mark messages as read
+     * Event: message:read
+     * Data: { conversationId, messageId }
+     */
+    socket.on('message:read', rateLimit('message:read')((data, callback) => {
+      handleMarkAsRead(io, socket, data, callback);
+    }));
+
+    /**
+     * Get unread count for conversation
+     * Event: unread:get
+     * Data: { conversationId }
+     */
+    socket.on('unread:get', (data, callback) => {
+      handleGetUnreadCount(socket, data, callback);
+    });
+
+    /**
+     * Get all unread counts
+     * Event: unread:getAll
+     * Data: { conversationIds: [] }
+     */
+    socket.on('unread:getAll', (data, callback) => {
+      handleGetAllUnreadCounts(socket, data, callback);
     });
 
     // ==========================================
