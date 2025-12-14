@@ -2,6 +2,84 @@ import * as messageService from '../services/messageService.js';
 import { parseCursorPagination } from '../utils/pagination.js';
 
 /**
+ * @desc    Send a new message (REST API)
+ * @route   POST /api/conversations/:conversationId/messages
+ * @access  Private (member only)
+ */
+export const sendMessage = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { content, type = 'text', attachments = [] } = req.body;
+    const currentUserId = req.userId;
+
+    // Get Socket.IO instance from app
+    const io = req.app.get('io');
+
+    // Create message
+    const message = await messageService.createMessage({
+      conversationId,
+      senderId: currentUserId,
+      content,
+      type,
+      attachments,
+    });
+
+    // Broadcast to Socket.IO room if io is available
+    if (io) {
+      const roomName = `conversation:${conversationId}`;
+      io.to(roomName).emit('message:new', {
+        success: true,
+        message: {
+          _id: message._id,
+          conversationId: message.conversationId,
+          senderId: {
+            _id: message.senderId._id,
+            name: message.senderId.name,
+            email: message.senderId.email,
+            avatar: message.senderId.avatar,
+          },
+          content: message.content,
+          type: message.type,
+          attachments: message.attachments,
+          isEdited: message.isEdited,
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+        },
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Message sent successfully',
+      data: {
+        message: {
+          _id: message._id,
+          conversationId: message.conversationId,
+          senderId: {
+            _id: message.senderId._id,
+            name: message.senderId.name,
+            email: message.senderId.email,
+            avatar: message.senderId.avatar,
+          },
+          content: message.content,
+          type: message.type,
+          attachments: message.attachments,
+          isEdited: message.isEdited,
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Send message error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to send message',
+    });
+  }
+};
+
+/**
  * @desc    Get messages for conversation with pagination
  * @route   GET /api/conversations/:conversationId/messages
  * @access  Private (member only)
@@ -28,6 +106,104 @@ export const getMessages = async (req, res) => {
     res.status(error.statusCode || 500).json({
       success: false,
       message: error.message || 'Failed to retrieve messages',
+    });
+  }
+};
+
+/**
+ * @desc    Edit a message (REST API)
+ * @route   PATCH /api/conversations/:conversationId/messages/:messageId
+ * @access  Private (sender only)
+ */
+export const editMessage = async (req, res) => {
+  try {
+    const { conversationId, messageId } = req.params;
+    const { content } = req.body;
+    const currentUserId = req.userId;
+
+    // Get Socket.IO instance
+    const io = req.app.get('io');
+
+    // Edit message
+    const updatedMessage = await messageService.editMessage(
+      messageId,
+      currentUserId,
+      content
+    );
+
+    // Broadcast to Socket.IO room
+    if (io) {
+      const roomName = `conversation:${conversationId}`;
+      io.to(roomName).emit('message:edited', {
+        success: true,
+        message: {
+          _id: updatedMessage._id,
+          conversationId: updatedMessage.conversationId,
+          content: updatedMessage.content,
+          isEdited: updatedMessage.isEdited,
+          updatedAt: updatedMessage.updatedAt,
+        },
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Message edited successfully',
+      data: {
+        message: updatedMessage,
+      },
+    });
+  } catch (error) {
+    console.error('Edit message error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to edit message',
+    });
+  }
+};
+
+/**
+ * @desc    Delete a message (REST API)
+ * @route   DELETE /api/conversations/:conversationId/messages/:messageId
+ * @access  Private (sender only)
+ */
+export const deleteMessage = async (req, res) => {
+  try {
+    const { conversationId, messageId } = req.params;
+    const currentUserId = req.userId;
+
+    // Get Socket.IO instance
+    const io = req.app.get('io');
+
+    // Delete message
+    const deletedMessage = await messageService.deleteMessage(
+      messageId,
+      currentUserId
+    );
+
+    // Broadcast to Socket.IO room
+    if (io) {
+      const roomName = `conversation:${conversationId}`;
+      io.to(roomName).emit('message:deleted', {
+        success: true,
+        messageId: deletedMessage._id,
+        conversationId,
+        deletedAt: new Date().toISOString(),
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Message deleted successfully',
+      data: {
+        messageId: deletedMessage._id,
+      },
+    });
+  } catch (error) {
+    console.error('Delete message error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to delete message',
     });
   }
 };
