@@ -6,18 +6,17 @@ import rateLimit from 'express-rate-limit';
  */
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 requests per windowMs
+  max: 50, // ✅ Increased from 10 to 50 for debugging
   message: {
     success: false,
     message: 'Too many authentication attempts. Please try again later.',
   },
-  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-  legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  // Skip successful requests
+  standardHeaders: true,
+  legacyHeaders: false,
   skipSuccessfulRequests: false,
-  // Skip failed requests (only count successful ones)
   skipFailedRequests: false,
 });
+
 
 /**
  * Rate Limiter for OTP Routes

@@ -21,6 +21,7 @@ const generateAccessToken = (userId) => {
  * @returns {string} JWT token
  */
 const generateRefreshToken = (userId) => {
+ 
   return jwt.sign(
     { userId },
     process.env.JWT_REFRESH_SECRET,
@@ -34,13 +35,32 @@ const generateRefreshToken = (userId) => {
  * @param {string} token - Refresh token
  */
 const setRefreshTokenCookie = (res, token) => {
-  res.cookie('refreshToken', token, {
-    httpOnly: true, // Prevents XSS attacks
-    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-    sameSite: 'strict', // CSRF protection
+  const cookieOptions = {
+    httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: '/',
+  };
+
+  // In production: secure + none for cross-origin
+  // In development: lax (no secure needed for localhost)
+  if (process.env.NODE_ENV === 'production') {
+    cookieOptions.secure = true;
+    cookieOptions.sameSite = 'none';
+  } else {
+    cookieOptions.sameSite = 'lax';
+  }
+
+  console.log('🍪 SETTING COOKIE:', {
+    name: 'refreshToken',
+    ...cookieOptions,
+    token: token.substring(0, 20) + '...',
   });
+
+  res.cookie('refreshToken', token, cookieOptions);
 };
+
+
+
 
 /**
  * CONTROLLER: Register new user with email and password
@@ -195,6 +215,7 @@ export const login = async (req, res) => {
 export const refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.cookies;
+     console.log('cookies in /refresh:', req.cookies);
 
     if (!refreshToken) {
       return res.status(401).json({
