@@ -1,5 +1,4 @@
 import express from 'express';
-import { HttpResponse } from '../utils/HttpResponse.js';
 
 import { VerifyToken } from '../middlewares/VeriyToken.js';
 import {
@@ -7,10 +6,12 @@ import {
   GetSingleChat,
   GetUserChats,
 } from '../controllers/ChatController.js';
+import { CreateMessage } from '../controllers/MessageController.js';
 
 const router = express.Router();
 
 router.post('/create-chat', VerifyToken, CreateChat);
+router.post('/create-message', VerifyToken, CreateMessage);
 router.get('/get-user-chats', VerifyToken, GetUserChats);
 router.get('/get-single-chat/:id', VerifyToken, GetSingleChat);
 
