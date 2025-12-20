@@ -7,6 +7,8 @@ import cloudinary from '../config/cloudinary.js';
 export const CreateMessage = async (req, res) => {
   const userId = req.userId;
   const { chatId, content, image, replyTo } = req.body;
+  if (!(content || image))
+    return HttpResponse(res, 400, true, 'Either Content or Image is required');
   try {
     const chat = await Chat.findOne({
       _id: chatId,
@@ -26,9 +28,16 @@ export const CreateMessage = async (req, res) => {
     }
     let imageUrl;
     if (image) {
-      // Upload the image to cloudinary
-      const uploadRes = await cloudinary.uploader.upload(image);
-      imageUrl = uploadRes.secure_url;
+      try {
+        const uploadRes = await cloudinary.uploader.upload(image, {
+          folder: 'chat_messages',
+          resource_type: 'auto',
+        });
+        imageUrl = uploadRes.secure_url;
+      } catch (uploadErr) {
+        console.error('Cloudinary Upload Error:', uploadErr);
+        return HttpResponse(res, 500, true, 'Image upload failed');
+      }
     }
     const newmessage = await Message.create({
       chatId,
