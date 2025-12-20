@@ -3,11 +3,13 @@ import mongoose, { Schema } from 'mongoose';
 
 const ChatSchema = new mongoose.Schema(
   {
-    participants: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
+    participants: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+      },
+    ],
     lastMessage: {
       type: Schema.Types.ObjectId,
       ref: 'Message',
@@ -16,6 +18,9 @@ const ChatSchema = new mongoose.Schema(
     isGroup: {
       type: Boolean,
       default: false,
+    },
+    groupName: {
+      type: String,
     },
     createdBy: {
       type: Schema.Types.ObjectId,

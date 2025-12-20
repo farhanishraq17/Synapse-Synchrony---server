@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './src/routes/authRoutes.js';
 import UserRoutes from './src/routes/UserRoutes.js';
+import ChatRoutes from './src/routes/ChatRoutes.js';
 import cookieParser from 'cookie-parser';
 import { connectDB } from './src/config/db.js';
 
@@ -20,6 +21,7 @@ app.get('/', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', UserRoutes);
+app.use('/api/chat', ChatRoutes);
 
 connectDB().then(() => {
   app.listen(PORT, () => {

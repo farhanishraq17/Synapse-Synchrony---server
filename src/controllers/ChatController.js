@@ -1,0 +1,141 @@
+import Chat from '../models/Chat.js';
+import Message from '../models/Message.js';
+import User from '../models/User.js';
+import { HttpResponse } from '../utils/HttpResponse.js';
+
+export const CreateChat = async (req, res) => {
+  const { participants, isGroup, groupName, participantID } = req.body;
+
+  // Validate participants or participantID
+  if (!(participants?.length || participantID))
+    return HttpResponse(
+      res,
+      400,
+      true,
+      'Either Participants or ParticipantID is needed'
+    );
+
+  const createdBy = req.userId;
+
+  try {
+    // Check if the createdBy user exists
+    const existingCreateUser = await User.findOne({ _id: createdBy });
+    if (!existingCreateUser)
+      return HttpResponse(res, 404, true, 'User (Creating) not Found');
+
+    // Create Chat Cond1
+    if (isGroup && groupName && participants?.length) {
+      const allParticipantIds = [createdBy, ...participants];
+      const chat = await Chat.create({
+        participants: allParticipantIds,
+        isGroup,
+        groupName,
+        createdBy,
+      });
+      return HttpResponse(res, 200, false, 'Chat Created Successfully', chat);
+    }
+    // Create Chat Cond2
+    else {
+      const allParticipantIds = [createdBy, participantID];
+      // Check if such a chat already exits. If yes, send that chat back instead of creating a new one
+      const existingChat = await Chat.findOne({
+        participants: {
+          $all: allParticipantIds,
+          $size: 2,
+        },
+      });
+      if (existingChat)
+        return HttpResponse(
+          res,
+          200,
+          false,
+          'Chat Already exists. Retrieved successfully',
+          existingChat
+        );
+      const chat = await Chat.create({
+        participants: allParticipantIds,
+        createdBy,
+      });
+      return HttpResponse(res, 200, false, 'Chat Created Successfully', chat);
+    }
+  } catch (error) {
+    console.error(error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+
+export const GetUserChats = async (req, res) => {
+  const userId = req.userId;
+  try {
+    const chats = await Chat.find({
+      participants: {
+        $in: [userId],
+      },
+    })
+      .populate('participants', 'name avatar')
+      .populate({
+        path: 'lastMessage',
+        populate: {
+          path: 'sender',
+          select: 'name avatar',
+        },
+      })
+      .sort({ updatedAt: -1 });
+
+    // Include chats in the response
+    return HttpResponse(
+      res,
+      200,
+      false,
+      'Retrieved User Chats Successfully',
+      chats
+    );
+  } catch (error) {
+    console.error(error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+
+export const GetSingleChat = async (req, res) => {
+  const userId = req.userId;
+  const { id } = req.params;
+
+  try {
+    const chat = await Chat.findOne({
+      _id: id,
+      participants: { $in: [userId] },
+    })
+      .populate('participants', 'name avatar')
+      .populate({
+        path: 'lastMessage',
+        populate: {
+          path: 'sender',
+          select: 'name avatar',
+        },
+      });
+
+    if (!chat) {
+      return HttpResponse(res, 404, true, 'Chat Not Found');
+    }
+
+    const messages = await Message.find({ chatId: id })
+      .populate('sender', 'name avatar')
+      .populate({
+        path: 'replyTo',
+        select: 'content image sender',
+        populate: {
+          path: 'sender',
+          select: 'name avatar',
+        },
+      })
+      .sort({ createdAt: 1 });
+
+    return HttpResponse(res, 200, false, 'Chat Retrieved Successfully', {
+      chat,
+      messages,
+    });
+  } catch (error) {
+    console.error(error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
