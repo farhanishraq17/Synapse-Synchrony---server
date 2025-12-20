@@ -3,6 +3,10 @@ import Chat from '../models/Chat.js';
 import Message from '../models/Message.js';
 import { HttpResponse } from '../utils/HttpResponse.js';
 import cloudinary from '../config/cloudinary.js';
+import {
+  emitLastMessageToParticipants,
+  emitNewMessageToChatRoom,
+} from '../lib/socket.js';
 
 export const CreateMessage = async (req, res) => {
   const userId = req.userId;
@@ -59,6 +63,14 @@ export const CreateMessage = async (req, res) => {
     ]);
     chat.lastMessage = newmessage._id;
     await chat.save();
+
+    // Websocket emit the New Message to the Chat Room
+    emitNewMessageToChatRoom(userId, chatId, newmessage);
+
+    // Websocket emit the Last Message to the Participants
+    const allParticipantIds = chat.participants.map((id) => id.toString());
+    emitLastMessageToParticipants(allParticipantIds, chatId, newmessage);
+
     return HttpResponse(
       res,
       201,

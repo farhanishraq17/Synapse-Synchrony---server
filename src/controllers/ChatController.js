@@ -1,3 +1,4 @@
+import { emitNewChatToParticipants } from '../lib/socket.js';
 import Chat from '../models/Chat.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
@@ -56,6 +57,15 @@ export const CreateChat = async (req, res) => {
         participants: allParticipantIds,
         createdBy,
       });
+
+      // Implement Websocket
+      const populatedChat = await chat?.populate('participants', 'name avatar');
+      const participantIdStrings = populatedChat?.participants.map((p) => {
+        return p._id?.toString();
+      });
+
+      emitNewChatToParticipants(participantIdStrings, populatedChat);
+
       return HttpResponse(res, 200, false, 'Chat Created Successfully', chat);
     }
   } catch (error) {
@@ -138,4 +148,16 @@ export const GetSingleChat = async (req, res) => {
     console.error(error);
     return HttpResponse(res, 500, true, 'Internal Server Error');
   }
+};
+
+export const validateChatParticipant = async (chatId, userId) => {
+  const chat = await Chat.findOne({
+    _id: chatId,
+    participants: {
+      $in: [userId],
+    },
+  });
+  if (!chat)
+    return HttpResponse(res, 400, true, 'User not a participant in this chat');
+  return chat;
 };
