@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat API Tester - Piece 3</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        .token-display {
+            background: #fff;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            border: 2px solid #e0e0e0;
+            margin-top: 10px;
+        }
+
+        .status {
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .response {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .conversation-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border: 2px solid #e0e0e0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .conversation-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .conversation-card h3 {
+            color: #333;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+
+        .conversation-card p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .badge.direct {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .badge.group {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Synapse-Synchrony Chat API Tester</h1>
+            <p>Piece 3: Conversation REST API Test Interface</p>
+        </div>
+
+        <div class="content">
+            <!-- Auth Tabs -->
+            <div class="section">
+                <h2>🔐 Authentication</h2>
+                <div class="tabs">
+                    <button class="tab active" onclick="switchAuthTab('login')">Login</button>
+                    <button class="tab" onclick="switchAuthTab('register')">Register New Account</button>
+                </div>
+
+                <!-- Login Tab -->
+                <div id="loginTab">
+                    <div class="form-group">
+                        <label>Email:</label>
+                        <input type="email" id="loginEmail" value="testuser1@synapse.com" placeholder="Enter your email">
+                    </div>
+                    <div class="form-group">
+                        <label>Password:</label>
+                        <input type="password" id="loginPassword" value="Test123456" placeholder="Enter your password">
+                    </div>
+                    <button onclick="login()">Login</button>
+                    <div id="loginStatus"></div>
+                </div>
+
+                <!-- Register Tab -->
+                <div id="registerTab" class="hidden">
+                    <div class="form-group">
+                        <label>Name:</label>
+                        <input type="text" id="registerName" placeholder="e.g., John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label>Email:</label>
+                        <input type="email" id="registerEmail" placeholder="e.g., john@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password (min 6 characters):</label>
+                        <input type="password" id="registerPassword" placeholder="Enter password">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone Number (optional):</label>
+                        <input type="tel" id="registerPhone" placeholder="e.g., +8801234567890">
+                    </div>
+                    <button onclick="register()">Create Account</button>
+                    <div id="registerStatus"></div>
+                </div>
+
+                <!-- Token Display -->
+                <div id="tokenDisplay" class="hidden">
+                    <label>Access Token (auto-used in requests):</label>
+                    <div class="token-display" id="token"></div>
+                    <div style="margin-top: 10px;">
+                        <button class="secondary" onclick="logout()">Logout</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create Direct Conversation -->
+            <div class="section hidden" id="createDirectSection">
+                <h2>💬 Create Direct Conversation</h2>
+                <div class="form-group">
+                    <label>Chat with User:</label>
+                    <select id="directParticipant">
+                        <option value="">Select user...</option>
+                    </select>
+                </div>
+                <button onclick="createDirectConversation()">Create Direct Chat</button>
+                <div id="directStatus"></div>
+                <pre id="directResponse" class="response hidden"></pre>
+            </div>
+
+            <!-- Create Group Conversation -->
+            <div class="section hidden" id="createGroupSection">
+                <h2>👥 Create Group Conversation</h2>
+                <div class="form-group">
+                    <label>Group Name:</label>
+                    <input type="text" id="groupName" placeholder="e.g., Project Team">
+                </div>
+                <div class="form-group">
+                    <label>Select Participants:</label>
+                    <div id="participantCheckboxes"></div>
+                </div>
+                <button onclick="createGroupConversation()">Create Group</button>
+                <div id="groupStatus"></div>
+                <pre id="groupResponse" class="response hidden"></pre>
+            </div>
+
+            <!-- List Conversations -->
+            <div class="section hidden" id="listSection">
+                <h2>📋 My Conversations</h2>
+                <button onclick="getConversations()">Refresh List</button>
+                <div id="conversationsList"></div>
+                <div id="listStatus"></div>
+            </div>
+
+            <!-- Conversation Details -->
+            <div class="section hidden" id="detailsSection">
+                <h2>🔍 Conversation Details</h2>
+                <div id="conversationDetails"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        let accessToken = null;
+        let currentUserId = null;
+        let currentUserEmail = null;
+        let allUsers = [];
+
+        function switchAuthTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            
+            if (tab === 'login') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('loginTab').classList.remove('hidden');
+                document.getElementById('registerTab').classList.add('hidden');
+            } else {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('loginTab').classList.add('hidden');
+                document.getElementById('registerTab').classList.remove('hidden');
+            }
+        }
+
+        async function register() {
+            const name = document.getElementById('registerName').value.trim();
+            const email = document.getElementById('registerEmail').value.trim();
+            const password = document.getElementById('registerPassword').value;
+            const phoneNumber = document.getElementById('registerPhone').value.trim();
+            const statusDiv = document.getElementById('registerStatus');
+
+            // Validation
+            if (!name) {
+                statusDiv.innerHTML = '<div class="status error">❌ Name is required</div>';
+                return;
+            }
+
+            if (!email) {
+                statusDiv.innerHTML = '<div class="status error">❌ Email is required</div>';
+                return;
+            }
+
+            if (!password || password.length < 6) {
+                statusDiv.innerHTML = '<div class="status error">❌ Password must be at least 6 characters</div>';
+                return;
+            }
+
+            try {
+                const body = { email, password, name };
+                if (phoneNumber) body.phoneNumber = phoneNumber;
+
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `<div class="status success">✅ Account created successfully! Logging you in...</div>`;
+                    
+                    // Auto-login after registration
+                    accessToken = data.data.accessToken;
+                    currentUserId = data.data.user.id;
+                    currentUserEmail = data.data.user.email;
+                    
+                    document.getElementById('token').textContent = accessToken;
+                    document.getElementById('tokenDisplay').classList.remove('hidden');
+
+                    // Clear form
+                    document.getElementById('registerName').value = '';
+                    document.getElementById('registerEmail').value = '';
+                    document.getElementById('registerPassword').value = '';
+                    document.getElementById('registerPhone').value = '';
+
+                    // Show other sections
+                    showAuthenticatedSections();
+                    
+                    setTimeout(() => {
+                        switchAuthTab('login');
+                        statusDiv.innerHTML = '';
+                    }, 2000);
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">❌ ${data.message}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const statusDiv = document.getElementById('loginStatus');
+
+            if (!email || !password) {
+                statusDiv.innerHTML = '<div class="status error">❌ Email and password are required</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    accessToken = data.data.accessToken;
+                    currentUserId = data.data.user.id;
+                    currentUserEmail = data.data.user.email;
+                    
+                    statusDiv.innerHTML = `<div class="status success">✅ Logged in as ${data.data.user.name}</div>`;
+                    document.getElementById('token').textContent = accessToken;
+                    document.getElementById('tokenDisplay').classList.remove('hidden');
+
+                    showAuthenticatedSections();
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">❌ ${data.message}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        function logout() {
+            accessToken = null;
+            currentUserId = null;
+            currentUserEmail = null;
+            allUsers = [];
+
+            document.getElementById('tokenDisplay').classList.add('hidden');
+            document.getElementById('createDirectSection').classList.add('hidden');
+            document.getElementById('createGroupSection').classList.add('hidden');
+            document.getElementById('listSection').classList.add('hidden');
+            document.getElementById('detailsSection').classList.add('hidden');
+            
+            document.getElementById('loginStatus').innerHTML = '<div class="status info">Logged out successfully</div>';
+            document.getElementById('loginPassword').value = '';
+        }
+
+        async function showAuthenticatedSections() {
+            document.getElementById('createDirectSection').classList.remove('hidden');
+            document.getElementById('createGroupSection').classList.remove('hidden');
+            document.getElementById('listSection').classList.remove('hidden');
+
+            await loadUsers();
+            getConversations();
+        }
+
+        async function loadUsers() {
+            // Fetch current user's conversations to get other users
+            try {
+                const response = await fetch(`${API_BASE}/conversations`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    const userMap = new Map();
+                    
+                    // Extract unique users from conversations
+                    data.data.conversations.forEach(conv => {
+                        conv.participants.forEach(p => {
+                            if (p.userId._id !== currentUserId) {
+                                userMap.set(p.userId._id, {
+                                    id: p.userId._id,
+                                    name: p.userId.name,
+                                    email: p.userId.email
+                                });
+                            }
+                        });
+                    });
+
+                    allUsers = Array.from(userMap.values());
+                    
+                    // If no users found, add placeholder
+                    if (allUsers.length === 0) {
+                        allUsers = [
+                            { id: 'placeholder', name: 'No other users found', email: '' }
+                        ];
+                    }
+
+                    updateUserSelectors();
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        }
+
+        function updateUserSelectors() {
+            // Populate direct chat dropdown
+            const directSelect = document.getElementById('directParticipant');
+            directSelect.innerHTML = '<option value="">Select user...</option>';
+            allUsers.forEach(user => {
+                if (user.id !== 'placeholder') {
+                    directSelect.innerHTML += `<option value="${user.id}">${user.name} (${user.email})</option>`;
+                }
+            });
+
+            // Populate group participant checkboxes
+            const checkboxDiv = document.getElementById('participantCheckboxes');
+            checkboxDiv.innerHTML = '';
+            
+            if (allUsers.length > 0 && allUsers[0].id !== 'placeholder') {
+                allUsers.forEach(user => {
+                    checkboxDiv.innerHTML += `
+                        <div style="margin: 8px 0;">
+                            <input type="checkbox" id="user_${user.id}" value="${user.id}">
+                            <label for="user_${user.id}" style="display: inline; margin-left: 5px;">${user.name}</label>
+                        </div>
+                    `;
+                });
+            } else {
+                checkboxDiv.innerHTML = '<div class="status info">💡 Tip: Other users will appear here once they create accounts and you have conversations with them.</div>';
+            }
+        }
+
+        async function createDirectConversation() {
+            const participantId = document.getElementById('directParticipant').value;
+            const statusDiv = document.getElementById('directStatus');
+            const responseDiv = document.getElementById('directResponse');
+
+            if (!participantId) {
+                statusDiv.innerHTML = '<div class="status error">❌ Please select a user</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/conversations/direct`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({ participantId })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `<div class="status success">✅ ${data.message}</div>`;
+                    responseDiv.textContent = JSON.stringify(data, null, 2);
+                    responseDiv.classList.remove('hidden');
+                    getConversations();
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">❌ ${data.message}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function createGroupConversation() {
+            const name = document.getElementById('groupName').value.trim();
+            const statusDiv = document.getElementById('groupStatus');
+            const responseDiv = document.getElementById('groupResponse');
+
+            if (!name) {
+                statusDiv.innerHTML = '<div class="status error">❌ Please enter group name</div>';
+                return;
+            }
+
+            const participantIds = [];
+            allUsers.forEach(user => {
+                const checkbox = document.getElementById(`user_${user.id}`);
+                if (checkbox && checkbox.checked) {
+                    participantIds.push(user.id);
+                }
+            });
+
+            if (participantIds.length === 0) {
+                statusDiv.innerHTML = '<div class="status error">❌ Please select at least one participant</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/conversations/group`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({ name, participantIds })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `<div class="status success">✅ ${data.message}</div>`;
+                    responseDiv.textContent = JSON.stringify(data, null, 2);
+                    responseDiv.classList.remove('hidden');
+                    document.getElementById('groupName').value = '';
+                    getConversations();
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">❌ ${data.message}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function getConversations() {
+            const listDiv = document.getElementById('conversationsList');
+            const statusDiv = document.getElementById('listStatus');
+
+            try {
+                const response = await fetch(`${API_BASE}/conversations`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const conversations = data.data.conversations;
+                    
+                    if (conversations.length === 0) {
+                        listDiv.innerHTML = '<div class="status info">📭 No conversations yet. Create one above!</div>';
+                        return;
+                    }
+
+                    listDiv.innerHTML = '';
+                    conversations.forEach(conv => {
+                        const participantNames = conv.participants
+                            .map(p => p.userId.name)
+                            .join(', ');
+
+                        const card = document.createElement('div');
+                        card.className = 'conversation-card';
+                        card.onclick = () => viewConversation(conv._id);
+                        
+                        card.innerHTML = `
+                            <h3>
+                                ${conv.type === 'direct' ? '💬' : '👥'} 
+                                ${conv.name || 'Direct Chat'}
+                                <span class="badge ${conv.type}">${conv.type}</span>
+                            </h3>
+                            <p><strong>Participants:</strong> ${participantNames}</p>
+                            <p style="font-size: 12px; color: #999; margin-top: 5px;">
+                                Created: ${new Date(conv.createdAt).toLocaleString()}
+                            </p>
+                        `;
+                        
+                        listDiv.appendChild(card);
+                    });
+
+                    statusDiv.innerHTML = `<div class="status success">✅ Found ${conversations.length} conversation(s)</div>`;
+                    
+                    // Reload users from conversations
+                    loadUsers();
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">❌ ${data.message}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function viewConversation(conversationId) {
+            const detailsSection = document.getElementById('detailsSection');
+            const detailsDiv = document.getElementById('conversationDetails');
+
+            detailsSection.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE}/conversations/${conversationId}`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const conv = data.data.conversation;
+                    detailsDiv.innerHTML = `<div class="response">${JSON.stringify(conv, null, 2)}</div>`;
+                } else {
+                    detailsDiv.innerHTML = `<div class="status error">❌ ${data.message}</div>`;
+                }
+            } catch (error) {
+                detailsDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
