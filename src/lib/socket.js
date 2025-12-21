@@ -7,6 +7,7 @@ let io = null;
 const onlineUsers = new Map();
 
 export const initializesockeet = (httpServer) => {
+  // io.origins('http://localhost:5173');
   io = new Server(httpServer, {
     cors: {
       origin: 'http://localhost:5173',
@@ -31,14 +32,17 @@ export const initializesockeet = (httpServer) => {
         return;
       }
 
+      console.log('Raw Cookie:', rawCookie); // Log the raw cookie
+      console.log('Extracted Token:', token); // Log the extracted token
       const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('Decoded Token:', decodedToken); // Check if userId exists in decodedToken
       if (!decodedToken) {
         console.log('Invalid token, disconnecting');
         socket.disconnect(true);
         return;
       }
 
-      socket.userId = decodedToken.userId;
+      socket.userId = decodedToken.id;
       next();
     } catch (error) {
       console.error('Socket authentication error:', error.message);

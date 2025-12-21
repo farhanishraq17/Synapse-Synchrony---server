@@ -14,7 +14,7 @@ const UserSchema = new mongoose.Schema(
     },
     avatar: {
       type: String,
-      default: null,
+      default: 'https://i.ibb.co.com/0yrpXd6k/Blank-Pfp.webp',
     },
     name: {
       type: String,
