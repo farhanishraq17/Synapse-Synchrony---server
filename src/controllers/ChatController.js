@@ -1,4 +1,5 @@
 import { emitNewChatToParticipants } from '../lib/socket.js';
+import { generateStreamToken } from '../lib/stream.js';
 import Chat from '../models/Chat.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
@@ -161,3 +162,14 @@ export const validateChatParticipant = async (chatId, userId) => {
     return HttpResponse(res, 400, true, 'User not a participant in this chat');
   return chat;
 };
+
+export async function getStreamToken(req, res) {
+  try {
+    const token = generateStreamToken(req.userId);
+
+    res.status(200).json({ token });
+  } catch (error) {
+    console.log('Error in getStreamToken controller:', error.message);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+}
