@@ -7,7 +7,7 @@ import {
   getStreamToken,
   GetUserChats,
 } from '../controllers/ChatController.js';
-import { CreateMessage } from '../controllers/MessageController.js';
+import { CreateMessage, GetOrCreateAIChat, SendAIMessage } from '../controllers/MessageController.js';
 
 const router = express.Router();
 
