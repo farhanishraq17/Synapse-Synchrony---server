@@ -7,6 +7,8 @@ import {
   emitLastMessageToParticipants,
   emitNewMessageToChatRoom,
 } from '../lib/socket.js';
+import User from '../models/User.js';
+import { generateAIText } from '../config/GroqSetup.js';
 
 export const CreateMessage = async (req, res) => {
   const userId = req.userId;
