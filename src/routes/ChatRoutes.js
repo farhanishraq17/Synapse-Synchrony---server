@@ -17,4 +17,8 @@ router.get('/get-user-chats', VerifyToken, GetUserChats);
 router.get('/get-single-chat/:id', VerifyToken, GetSingleChat);
 router.get('/token', VerifyToken, getStreamToken);
 
+// ✅ NEW: AI Chat routes
+router.post('/send-ai-message', VerifyToken, SendAIMessage);
+router.get('/ai-chat', VerifyToken, GetOrCreateAIChat);
+
 export default router;

@@ -68,8 +68,8 @@ export const generateAIText = async (prompt, maxRetries = 3) => {
   }
 };
 
-// Test it out
-const response = await generateAIText(
-  'What is JS? Explain in simple terms'
-);
-console.log('Groq Response:', MDtoText(response));
+// // Test it out
+// const response = await generateAIText(
+//   'What is JS? Explain in simple terms'
+// );
+// console.log('Groq Response:', MDtoText(response));

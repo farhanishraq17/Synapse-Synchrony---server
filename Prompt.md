@@ -1,134 +1,285 @@
-# Here is the Complete Message Backend Info
+# So here is my entire User Data for you to debug
 
-
-### Message.js
+## User.js
 
 ```js
-// models/Message.js
-import mongoose, { Schema } from 'mongoose';
+// models/User.js
+import mongoose from 'mongoose';
 
-const MessageSchema = new mongoose.Schema(
+const UserSchema = new mongoose.Schema(
   {
-    chatId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Chat',
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    password: {
+      type: String,
       required: true,
     },
-    content: {
+    avatar: {
       type: String,
+      default: 'https://i.ibb.co.com/0yrpXd6k/Blank-Pfp.webp',
     },
-    image: {
+    name: {
       type: String,
-    },
-    sender: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
       required: true,
     },
-    replyTo: {
-      type: Schema.Types.ObjectId,
-      ref: 'Message',
-      default: null,
+    lastLogin: {
+      type: Date,
+      default: Date.now,
     },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    resetPasswordToken: String,
+    resetPasswordExpiresAt: Date,
+    verificationToken: String,
+    verificationTokenExpiresAt: Date,
   },
   {
     timestamps: true, // adds createdAt and updatedAt
   }
 );
 
-const Message = mongoose.model('Message', MessageSchema, 'messages');
-export default Message;
-// messages is the Collection Name
+const User = mongoose.model('User', UserSchema, 'users');
+export default User;
+// users is the Collection Name
 
 ```
 
-### MessageController.js
+## AuthController.js
 
 ```js
-import mongoose from 'mongoose';
-import Chat from '../models/Chat.js';
-import Message from '../models/Message.js';
+import User from '../models/User.js';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto'; // Make sure to import the crypto module
 import { HttpResponse } from '../utils/HttpResponse.js';
-import cloudinary from '../config/cloudinary.js';
 import {
-  emitLastMessageToParticipants,
-  emitNewMessageToChatRoom,
-} from '../lib/socket.js';
+  generateTokenandSetCookie,
+  generateVerficationToken,
+} from '../utils/utils.js';
+import {
+  sendVerificationEmail,
+  sendWelcomeEmail,
+} from '../Brevo/Brevoemail.js';
 
-export const CreateMessage = async (req, res) => {
-  const userId = req.userId;
-  const { chatId, content, image, replyTo } = req.body;
-  if (!(content || image))
-    return HttpResponse(res, 400, true, 'Either Content or Image is required');
+export const signup = async (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password || !name)
+    return HttpResponse(res, 400, true, 'All fields are required');
   try {
-    const chat = await Chat.findOne({
-      _id: chatId,
-      participants: {
-        $in: [userId],
-      },
-    });
-    if (!chat)
-      return HttpResponse(res, 404, true, 'Chat Not Found OR Unauthorized');
-    if (replyTo) {
-      const replyMessage = await Message.findOne({
-        _id: replyTo,
-        chatId,
-      });
-      if (!replyMessage)
-        return HttpResponse(res, 404, true, 'Reply to Message Not Found');
+    const UserAlreadyExists = await User.findOne({ email: email });
+    if (UserAlreadyExists) {
+      return HttpResponse(res, 409, true, 'User already exists');
     }
-    let imageUrl;
-    if (image) {
-      try {
-        const uploadRes = await cloudinary.uploader.upload(image, {
-          folder: 'chat_messages',
-          resource_type: 'auto',
-        });
-        imageUrl = uploadRes.secure_url;
-      } catch (uploadErr) {
-        console.error('Cloudinary Upload Error:', uploadErr);
-        return HttpResponse(res, 500, true, 'Image upload failed');
-      }
-    }
-    const newmessage = await Message.create({
-      chatId,
-      sender: userId,
-      content: content,
-      image: imageUrl,
-      replyTo: replyTo || null,
+    const HashedPassword = await bcrypt.hash(password, 10);
+    const VerficationToken = generateVerficationToken();
+    const newUser = new User({
+      email,
+      password: HashedPassword,
+      name,
+      verificationToken: VerficationToken,
+      verificationTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 Hours
     });
-    await newmessage.populate([
-      { path: 'sender', select: 'name avatar' },
-      {
-        path: 'replyTo',
-        select: 'content image sender',
-        populate: {
-          path: 'sender',
-          select: 'name avatar',
-        },
-      },
-    ]);
-    chat.lastMessage = newmessage._id;
-    await chat.save();
+    await newUser.save();
 
-    // Websocket emit the New Message to the Chat Room
-    emitNewMessageToChatRoom(userId, chatId, newmessage);
+    // Save the user Cookie
+    await generateTokenandSetCookie(res, newUser._id);
+    await sendVerificationEmail(newUser.email, VerficationToken);
 
-    // Websocket emit the Last Message to the Participants
-    const allParticipantIds = chat.participants.map((id) => id.toString());
-    emitLastMessageToParticipants(allParticipantIds, chatId, newmessage);
+    return HttpResponse(res, 201, false, 'User registered successfully', {
+      user: { ...newUser._doc, password: undefined },
+      VerficationToken,
+    });
+  } catch (error) {
+    console.error('Error during signup:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
 
+export const VerifyEmail = async (req, res) => {
+  const { code } = req.body;
+
+  try {
+    const user = await User.findOne({
+      verificationToken: code,
+      verificationTokenExpiresAt: { $gt: new Date() },
+    });
+    if (!user) {
+      return HttpResponse(
+        res,
+        400,
+        true,
+        'Invalid or expired verification token'
+      );
+    }
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpiresAt = undefined;
+    await user.save();
+    await sendWelcomeEmail(user.email, user.name);
+    return HttpResponse(res, 200, false, 'Email verified successfully', {
+      user: { ...user._doc, password: undefined },
+    });
+  } catch (error) {
+    console.error('Error during email verification:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+
+export const login = async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password)
+    return HttpResponse(res, 400, true, 'Email and Password are required');
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return HttpResponse(res, 404, true, 'User not found');
+    }
+    const IsPasswordValid = await bcrypt.compare(password, user.password);
+    if (!IsPasswordValid) {
+      return HttpResponse(res, 401, true, 'Invalid credentials');
+    }
+    generateTokenandSetCookie(res, user._id);
+    user.lastLogin = new Date();
+    await user.save();
+    return HttpResponse(res, 200, false, 'Login Successful', {
+      user: { ...user._doc, password: undefined },
+    });
+  } catch (error) {
+    console.error('Error during login:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+
+export const logout = async (req, res) => {
+  try {
+    res.clearCookie('token');
+    return HttpResponse(res, 200, false, 'Logged out successfully');
+  } catch (error) {
+    console.error('Error during logout:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+
+export const ForgotPassword = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'User not found' });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(20).toString('hex');
+    const resetTokenExpiresAt = Date.now() + 1 * 60 * 60 * 1000; // 1 hour
+
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpiresAt = resetTokenExpiresAt;
+
+    await user.save();
+
+    // send email
+    // await sendPasswordResetEmail(
+    //   user.email,
+    //   `${process.env.CLIENT_URL}/reset-password/${resetToken}`
+    // );
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset link sent to your email',
+    });
+  } catch (error) {
+    console.log('Error in forgotPassword ', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const ResetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) return HttpResponse(res, 400, true, 'Token is required');
+    const { password } = req.body;
+    if (!password) return HttpResponse(res, 400, true, 'Password is required');
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpiresAt: { $gt: new Date() },
+    });
+    if (!user) return HttpResponse(res, 400, true, 'Invalid or expired token');
+    // Update the password, the user data and save those to the DB
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpiresAt = undefined;
+    await user.save();
+    // await sendResetSuccessEmail(user.email);
+    return HttpResponse(res, 200, false, 'Password reset successful', user);
+  } catch (error) {
+    console.error('Error during password reset:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+
+export const CheckAuth = async (req, res) => {
+  try {
+    const user = await User.findOne({ _id: req.userId });
+    if (!user) return HttpResponse(res, 404, true, 'User not found');
     return HttpResponse(
       res,
-      201,
+      200,
       false,
-      'Message Created Successfully',
-      newmessage
+      'User Successfully Fetched and Authenticated',
+      {
+        user: { ...user._doc, password: undefined },
+      }
     );
   } catch (error) {
-    console.error(error);
+    console.error('Error during auth check:', error);
     return HttpResponse(res, 500, true, 'Internal Server Error');
   }
 };
 
 ```
+
+
+## stream.js
+
+```js
+import { StreamChat } from 'stream-chat';
+import 'dotenv/config';
+
+const apiKey = process.env.STEAM_API_KEY;
+const apiSecret = process.env.STEAM_API_SECRET;
+
+if (!apiKey || !apiSecret) {
+  console.error('Stream API key or Secret is missing');
+}
+
+const streamClient = StreamChat.getInstance(apiKey, apiSecret);
+
+export const upsertStreamUser = async (userData) => {
+  try {
+    await streamClient.upsertUsers([userData]);
+    return userData;
+  } catch (error) {
+    console.error('Error upserting Stream user:', error);
+  }
+};
+
+export const generateStreamToken = (userId) => {
+  try {
+    // ensure userId is a string
+    const userIdStr = userId.toString();
+    return streamClient.createToken(userIdStr);
+  } catch (error) {
+    console.error('Error generating Stream token:', error);
+  }
+};
+
+```
+
