@@ -24,31 +24,44 @@ export const initializesockeet = (httpServer) => {
         return;
       }
 
-      const token = rawCookie.split('=')?.[1]?.trim();
+      // ✅ FIXED: Parse cookies properly when there are multiple cookies
+      const cookies = rawCookie.split(';').reduce((acc, cookie) => {
+        const [key, value] = cookie.trim().split('=');
+        acc[key] = value;
+        return acc;
+      }, {});
+
+      const token = cookies.token;
+
       if (!token) {
         console.log('No token found, disconnecting');
         socket.disconnect(true);
         return;
       }
 
+      console.log('Raw Cookie:', rawCookie);
+      console.log('Extracted Token:', token);
+
       const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('Decoded Token:', decodedToken);
+
       if (!decodedToken) {
         console.log('Invalid token, disconnecting');
         socket.disconnect(true);
         return;
       }
 
-      socket.userId = decodedToken.userId;
+      socket.userId = decodedToken.id;
       next();
     } catch (error) {
       console.error('Socket authentication error:', error.message);
-      socket.disconnect(true); // Disconnect the socket if authentication fails
+      socket.disconnect(true);
     }
   });
 
   io.on('connection', (socket) => {
     if (!socket.userId) {
-      socket.disconnect(true); // Disconnect if userId is not present
+      socket.disconnect(true);
       return;
     }
     const userId = socket.userId;
@@ -105,7 +118,6 @@ function getIO() {
 export const emitNewChatToParticipants = (participants, chat) => {
   const io = getIO();
   for (const participantId of participants) {
-    // Changed to use 'participants' parameter
     io.to(`user:${participantId}`).emit('chat:new', chat);
   }
 };
@@ -120,9 +132,9 @@ export const emitNewMessageToChatRoom = (senderId, chatId, message) => {
   console.log('All online users:', Object.fromEntries(onlineUsers));
 
   if (senderSocketId) {
-    io.to(`chat:${chatId}`).except(senderSocketId).emit('message:new', message); // Sender is excluded from receiving their own message
+    io.to(`chat:${chatId}`).except(senderSocketId).emit('message:new', message);
   } else {
-    io.to(`chat:${chatId}`).emit('message:new', message); // Broadcast to the chat if sender is offline
+    io.to(`chat:${chatId}`).emit('message:new', message);
   }
 };
 

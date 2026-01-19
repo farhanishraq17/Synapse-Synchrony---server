@@ -1,6 +1,6 @@
 import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto'; // Make sure to import the crypto module
+import crypto from 'crypto';
 import { HttpResponse } from '../utils/HttpResponse.js';
 import {
   generateTokenandSetCookie,
@@ -10,6 +10,8 @@ import {
   sendVerificationEmail,
   sendWelcomeEmail,
 } from '../Brevo/Brevoemail.js';
+// ✅ Import Stream functions
+import { upsertStreamUser } from '../lib/stream.js';
 
 export const signup = async (req, res) => {
   const { email, password, name } = req.body;
@@ -30,6 +32,20 @@ export const signup = async (req, res) => {
       verificationTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 Hours
     });
     await newUser.save();
+
+    // ✅ Register user in Stream
+    try {
+      await upsertStreamUser({
+        id: newUser._id.toString(),
+        name: newUser.name,
+        image: newUser.avatar,
+        role: 'user',
+      });
+      console.log('User registered in Stream:', newUser._id);
+    } catch (streamError) {
+      console.error('Error registering user in Stream:', streamError);
+      // Don't block user registration if Stream fails
+    }
 
     // Save the user Cookie
     await generateTokenandSetCookie(res, newUser._id);
@@ -88,6 +104,21 @@ export const login = async (req, res) => {
     if (!IsPasswordValid) {
       return HttpResponse(res, 401, true, 'Invalid credentials');
     }
+
+    // ✅ Update/Register user in Stream on every login (ensures data is synced)
+    try {
+      await upsertStreamUser({
+        id: user._id.toString(),
+        name: user.name,
+        image: user.avatar,
+        role: 'user',
+      });
+      console.log('User synced with Stream:', user._id);
+    } catch (streamError) {
+      console.error('Error syncing user with Stream:', streamError);
+      // Don't block login if Stream fails
+    }
+
     generateTokenandSetCookie(res, user._id);
     user.lastLogin = new Date();
     await user.save();
@@ -187,5 +218,40 @@ export const CheckAuth = async (req, res) => {
   } catch (error) {
     console.error('Error during auth check:', error);
     return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+
+// ✅ NEW: Endpoint to sync all existing users to Stream (one-time use)
+export const SyncUsersToStream = async (req, res) => {
+  try {
+    const users = await User.find({}).select('_id name avatar');
+
+    const streamUsers = users.map((user) => ({
+      id: user._id.toString(),
+      name: user.name,
+      image: user.avatar,
+      role: 'user',
+    }));
+
+    // Batch upsert all users
+    const results = await Promise.allSettled(
+      streamUsers.map((user) => upsertStreamUser(user))
+    );
+
+    const successful = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.filter((r) => r.status === 'rejected').length;
+
+    console.log(
+      `Stream sync complete: ${successful} successful, ${failed} failed`
+    );
+
+    return HttpResponse(res, 200, false, 'Users synced to Stream', {
+      total: users.length,
+      successful,
+      failed,
+    });
+  } catch (error) {
+    console.error('Error syncing users to Stream:', error);
+    return HttpResponse(res, 500, true, 'Failed to sync users to Stream');
   }
 };
