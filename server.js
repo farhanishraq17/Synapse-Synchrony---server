@@ -5,6 +5,8 @@ import http from 'http';
 import authRoutes from './src/routes/authRoutes.js';
 import ChatRoutes from './src/routes/ChatRoutes.js';
 import UserRoutes from './src/routes/UserRoutes.js';
+import EventRoutes from './src/routes/EventRoutes.js';
+import BlogRoutes from './src/routes/BlogRoutes.js';
 import cookieParser from 'cookie-parser';
 import { connectDB } from './src/config/db.js';
 import { initializesockeet } from './src/lib/socket.js';
@@ -29,6 +31,8 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/user', UserRoutes);
 app.use('/api/chat', ChatRoutes);
+app.use('/api/portal/events', EventRoutes);
+app.use('/api/portal/blogs', BlogRoutes);
 
 connectDB().then(() => {
   server.listen(PORT, () => {
