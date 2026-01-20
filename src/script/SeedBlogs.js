@@ -7,6 +7,15 @@ import { connectDB } from '../config/db.js';
 
 dotenv.config();
 
+// Available blog images
+const blogImages = [
+  'https://i.ibb.co.com/rKJX4Dsp/Evening.webp',
+  'https://i.ibb.co.com/4Rt4YcVD/Fitness.webp',
+  'https://i.ibb.co.com/27Lt5MQD/Morning-Jog.webp',
+  'https://i.ibb.co.com/cK53YZg6/Morning-Yoga.webp',
+  'https://i.ibb.co.com/QvRXjjrG/Study.webp',
+];
+
 const blogsData = [
   {
     title: 'My First Semester at UIU: A Journey of Growth',
@@ -141,7 +150,7 @@ Key Takeaway: Rejections are part of the process. Learn from each interview and 
     tags: ['internship', 'career', 'job-search', 'interview'],
   },
   {
-    title: 'Understanding Data Structures: A Beginner\'s Guide',
+    title: "Understanding Data Structures: A Beginner's Guide",
     content: `Data Structures were intimidating when I first encountered them in CSE 4304. Now they're one of my favorite topics! Let me break them down simply.
 
 What are Data Structures?
@@ -230,7 +239,7 @@ Bottom line: Remote learning has challenges, but with the right mindset and tool
     tags: ['remote-learning', 'online-classes', 'productivity', 'pandemic'],
   },
   {
-    title: 'Why I Switched My Major and Why That\'s Okay',
+    title: "Why I Switched My Major and Why That's Okay",
     content: `This is a vulnerable post, but I hope it helps someone out there.
 
 I started university as an EEE major. I thought I wanted to work with circuits and electronics because it sounded cool. Six months in, I realized I was miserable. I struggled with every class, had no passion for the subject, and dreaded going to lectures.
@@ -264,7 +273,7 @@ Don't let sunk cost fallacy trap you in misery. It's your life - make the choice
     tags: ['major', 'career-change', 'advice', 'mental-health'],
   },
   {
-    title: 'Mastering Time Management: A Student\'s Complete Guide',
+    title: "Mastering Time Management: A Student's Complete Guide",
     content: `Time management was my biggest struggle in first year. Now in third year, I've finally figured it out. Here's everything I learned.
 
 The Problem:
@@ -924,24 +933,32 @@ const seedBlogs = async () => {
     await Blog.deleteMany({});
     console.log('🗑️  Cleared existing blogs');
 
-    // Get users to assign as authors
-    const users = await User.find({}).limit(10);
-    
+    // Get specific users (excluding Whoop AI)
+    const users = await User.find({
+      isAI: { $ne: true }, // Exclude AI users
+    });
+
     if (users.length === 0) {
-      console.error('❌ No users found in database. Please create users first.');
+      console.error(
+        '❌ No users found in database. Please create users first.',
+      );
       process.exit(1);
     }
 
     console.log(`👥 Found ${users.length} users to assign as blog authors`);
 
-    // Assign random users as authors and add some likes/views
-    const blogsWithAuthors = blogsData.map((blog) => {
+    // Assign random users as authors and add images, likes, views
+    const blogsWithAuthors = blogsData.map((blog, index) => {
       const randomAuthor = users[Math.floor(Math.random() * users.length)];
-      
+
+      // Assign images randomly from the available pool
+      const randomImage =
+        blogImages[Math.floor(Math.random() * blogImages.length)];
+
       // Randomly add likes (0-20 users)
       const numLikes = Math.floor(Math.random() * 21);
       const likes = [];
-      
+
       for (let i = 0; i < Math.min(numLikes, users.length); i++) {
         const randomLiker = users[Math.floor(Math.random() * users.length)];
         if (!likes.includes(randomLiker._id)) {
@@ -955,6 +972,7 @@ const seedBlogs = async () => {
       return {
         ...blog,
         author: randomAuthor._id,
+        image: randomImage,
         likes,
         views,
       };
@@ -966,19 +984,41 @@ const seedBlogs = async () => {
 
     // Display summary
     console.log('\n📊 Blog Summary:');
-    console.log(`   - Experience: ${createdBlogs.filter(b => b.category === 'experience').length}`);
-    console.log(`   - Academic: ${createdBlogs.filter(b => b.category === 'academic').length}`);
-    console.log(`   - Campus Life: ${createdBlogs.filter(b => b.category === 'campus-life').length}`);
-    console.log(`   - Tips: ${createdBlogs.filter(b => b.category === 'tips').length}`);
-    console.log(`   - Story: ${createdBlogs.filter(b => b.category === 'story').length}`);
+    console.log(
+      `   - Experience: ${createdBlogs.filter((b) => b.category === 'experience').length}`,
+    );
+    console.log(
+      `   - Academic: ${createdBlogs.filter((b) => b.category === 'academic').length}`,
+    );
+    console.log(
+      `   - Campus Life: ${createdBlogs.filter((b) => b.category === 'campus-life').length}`,
+    );
+    console.log(
+      `   - Tips: ${createdBlogs.filter((b) => b.category === 'tips').length}`,
+    );
+    console.log(
+      `   - Story: ${createdBlogs.filter((b) => b.category === 'story').length}`,
+    );
 
     console.log('\n📈 Stats:');
-    const totalLikes = createdBlogs.reduce((sum, blog) => sum + blog.likes.length, 0);
+    const totalLikes = createdBlogs.reduce(
+      (sum, blog) => sum + blog.likes.length,
+      0,
+    );
     const totalViews = createdBlogs.reduce((sum, blog) => sum + blog.views, 0);
     console.log(`   - Total Likes: ${totalLikes}`);
     console.log(`   - Total Views: ${totalViews}`);
-    console.log(`   - Average Likes per Blog: ${(totalLikes / createdBlogs.length).toFixed(1)}`);
-    console.log(`   - Average Views per Blog: ${(totalViews / createdBlogs.length).toFixed(1)}`);
+    console.log(
+      `   - Average Likes per Blog: ${(totalLikes / createdBlogs.length).toFixed(1)}`,
+    );
+    console.log(
+      `   - Average Views per Blog: ${(totalViews / createdBlogs.length).toFixed(1)}`,
+    );
+
+    console.log('\n🖼️  Images Used:');
+    blogImages.forEach((img, i) => {
+      console.log(`   ${i + 1}. ${img.split('/').pop()}`);
+    });
 
     console.log('\n🎉 Blog seeding completed successfully!');
     process.exit(0);
