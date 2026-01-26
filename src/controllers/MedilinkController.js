@@ -184,3 +184,21 @@ export const getSessionHistory = async (req, res) => {
     res.status(500).json({ success: false, message: "Error fetching history" });
   }
 };
+
+export const getAllSessions = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    const sessions = await MedilinkSession.find({ userId })
+      .sort({ updatedAt: -1 })
+      .select('sessionId messages startTime updatedAt createdAt');
+
+    res.json({
+      success: true,
+      data: sessions,
+    });
+  } catch (error) {
+    console.error("Error fetching sessions:", error);
+    res.status(500).json({ success: false, message: "Error fetching sessions" });
+  }
+};
