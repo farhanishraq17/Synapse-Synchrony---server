@@ -3,6 +3,11 @@ import Blog from '../models/Blog.js';
 import BlogComment from '../models/BlogComment.js';
 import { HttpResponse } from '../utils/HttpResponse.js';
 import cloudinary from '../config/cloudinary.js';
+import { Groq } from 'groq-sdk';
+import dotenv from 'dotenv';
+
+dotenv.config();
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Create Blog
 export const CreateBlog = async (req, res) => {
@@ -330,5 +335,153 @@ export const GetPopularBlogs = async (req, res) => {
   } catch (error) {
     console.error('Error in GetPopularBlogs:', error);
     return HttpResponse(res, 500, true, 'Server error', error.message);
+  }
+};
+
+// AI: Generate Blog with AI
+export const GenerateBlogWithAI = async (req, res) => {
+  const userId = req.userId;
+  const { title, additionalContext } = req.body;
+
+  try {
+    if (!title) {
+      return HttpResponse(res, 400, true, 'Blog title is required');
+    }
+
+    console.log('Generating blog with AI for title:', title);
+
+    // Construct AI prompt for blog generation
+    const blogPrompt = `You are a professional blog writer. Create a comprehensive, engaging blog post about: "${title}"
+
+${additionalContext ? `Additional Context: ${additionalContext}` : ''}
+
+Requirements:
+1. Write a well-structured blog post (800-1200 words)
+2. Include an engaging introduction
+3. Use clear section headers (use ## for headers)
+4. Provide practical examples and insights
+5. Write in a friendly, informative tone suitable for students
+6. Include a conclusion
+7. Format in Markdown
+
+Also suggest:
+- A category from: experience, academic, campus-life, tips, story
+- 3-5 relevant tags
+
+Return ONLY valid JSON in this format:
+{
+  "content": "full blog content in markdown",
+  "suggestedCategory": "category",
+  "suggestedTags": ["tag1", "tag2", "tag3"]
+}`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional blog content generator. Always return valid JSON.',
+        },
+        {
+          role: 'user',
+          content: blogPrompt,
+        },
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.7,
+      max_completion_tokens: 2048,
+      response_format: { type: 'json_object' },
+    });
+
+    const aiResponse = JSON.parse(
+      completion.choices[0]?.message?.content || '{}'
+    );
+
+    console.log('AI blog generation successful');
+
+    return HttpResponse(res, 200, false, 'Blog content generated successfully', {
+      title,
+      content: aiResponse.content,
+      suggestedCategory: aiResponse.suggestedCategory,
+      suggestedTags: aiResponse.suggestedTags,
+      wordCount: aiResponse.content?.split(' ').length || 0,
+    });
+  } catch (error) {
+    console.error('Error in GenerateBlogWithAI:', error);
+    return HttpResponse(res, 500, true, 'Failed to generate blog with AI', error.message);
+  }
+};
+
+// AI: Summarize Blog
+export const SummarizeBlog = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Find blog
+    const blog = await Blog.findById(id).populate('author', 'name email avatar');
+    
+    if (!blog) {
+      return HttpResponse(res, 404, true, 'Blog not found');
+    }
+
+    console.log('Generating summary for blog:', blog.title);
+
+    // Construct AI prompt for summarization
+    const summaryPrompt = `Create a comprehensive summary of the following blog post that captures all the main content so readers can understand everything without reading the full article.
+
+Blog Title: ${blog.title}
+Blog Content:
+${blog.content}
+
+Provide:
+1. A comprehensive summary (250-400 words) that covers:
+   - Main topic and purpose
+   - All key points and arguments
+   - Important examples or evidence mentioned
+   - Main conclusions or takeaways
+   - Any practical advice or recommendations
+2. Quick highlights (5-7 bullet points of the most important information)
+3. Estimated reading time in minutes
+
+Return ONLY valid JSON:
+{
+  "summary": "comprehensive summary covering all main content",
+  "keyPoints": ["point1", "point2", "point3", "point4", "point5"],
+  "readingTime": number (minutes)
+}`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional content summarizer. Always return valid JSON.',
+        },
+        {
+          role: 'user',
+          content: summaryPrompt,
+        },
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.3,
+      max_completion_tokens: 512,
+      response_format: { type: 'json_object' },
+    });
+
+    const aiSummary = JSON.parse(
+      completion.choices[0]?.message?.content || '{}'
+    );
+
+    console.log('Blog summary generated successfully');
+
+    return HttpResponse(res, 200, false, 'Blog summary generated successfully', {
+      blogId: blog._id,
+      title: blog.title,
+      summary: aiSummary.summary,
+      keyPoints: aiSummary.keyPoints,
+      readingTime: aiSummary.readingTime,
+      author: blog.author,
+    });
+  } catch (error) {
+    console.error('Error in SummarizeBlog:', error);
+    return HttpResponse(res, 500, true, 'Failed to summarize blog', error.message);
   }
 };

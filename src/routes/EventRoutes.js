@@ -12,6 +12,8 @@ import {
   GetUpcomingEvents,
   GetMyRegisteredEvents,
   GetMyCreatedEvents,
+  GenerateEventWithAI,
+  SummarizeEvent,
 } from '../controllers/EventController.js';
 
 const router = express.Router();
@@ -29,5 +31,9 @@ router.post('/:id/register', VerifyToken, RegisterForEvent);
 router.delete('/:id/register', VerifyToken, UnregisterFromEvent);
 router.get('/user/registered', VerifyToken, GetMyRegisteredEvents);
 router.get('/user/created', VerifyToken, GetMyCreatedEvents);
+
+// AI-powered features (require authentication)
+router.post('/ai/generate', VerifyToken, GenerateEventWithAI);
+router.get('/:id/ai/summarize', SummarizeEvent);
 
 export default router;

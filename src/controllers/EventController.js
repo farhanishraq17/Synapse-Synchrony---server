@@ -2,6 +2,11 @@
 import Event from '../models/Event.js';
 import { HttpResponse } from '../utils/HttpResponse.js';
 import cloudinary from '../config/cloudinary.js';
+import { Groq } from 'groq-sdk';
+import dotenv from 'dotenv';
+
+dotenv.config();
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Create Event
 export const CreateEvent = async (req, res) => {
@@ -387,5 +392,183 @@ export const GetMyCreatedEvents = async (req, res) => {
   } catch (error) {
     console.error('Error in GetMyCreatedEvents:', error);
     return HttpResponse(res, 500, true, 'Server error', error.message);
+  }
+};
+
+// AI: Generate Event with AI
+export const GenerateEventWithAI = async (req, res) => {
+  const userId = req.userId;
+  const { title, additionalContext } = req.body;
+
+  try {
+    if (!title) {
+      return HttpResponse(res, 400, true, 'Event title is required');
+    }
+
+    console.log('Generating event with AI for title:', title);
+
+    // Construct AI prompt for event generation
+    const eventPrompt = `You are a professional event organizer. Create comprehensive event details for: "${title}"
+
+${additionalContext ? `Additional Context: ${additionalContext}` : ''}
+
+Requirements:
+1. Write an engaging, detailed event description (300-500 words)
+2. Include what participants will learn or experience
+3. Mention prerequisites (if any)
+4. Describe the target audience
+5. Include potential benefits of attending
+6. Use professional, inviting tone
+
+Also suggest:
+- Event type from: workshop, seminar, extracurricular, academic, social
+- Duration in hours (realistic estimate)
+- Suggested capacity (number of attendees)
+- 3-5 relevant tags
+
+Return ONLY valid JSON in this format:
+{
+  "description": "detailed event description",
+  "suggestedType": "event type",
+  "suggestedDuration": number (hours),
+  "suggestedCapacity": number,
+  "targetAudience": "who should attend",
+  "prerequisites": "what attendees should know (or 'None')",
+  "suggestedTags": ["tag1", "tag2", "tag3"]
+}`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional event planning assistant. Always return valid JSON.',
+        },
+        {
+          role: 'user',
+          content: eventPrompt,
+        },
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.7,
+      max_completion_tokens: 1536,
+      response_format: { type: 'json_object' },
+    });
+
+    const aiResponse = JSON.parse(
+      completion.choices[0]?.message?.content || '{}'
+    );
+
+    console.log('AI event generation successful');
+
+    return HttpResponse(res, 200, false, 'Event details generated successfully', {
+      title,
+      description: aiResponse.description,
+      suggestedType: aiResponse.suggestedType,
+      suggestedDuration: aiResponse.suggestedDuration,
+      suggestedCapacity: aiResponse.suggestedCapacity,
+      targetAudience: aiResponse.targetAudience,
+      prerequisites: aiResponse.prerequisites,
+      suggestedTags: aiResponse.suggestedTags,
+    });
+  } catch (error) {
+    console.error('Error in GenerateEventWithAI:', error);
+    return HttpResponse(res, 500, true, 'Failed to generate event with AI', error.message);
+  }
+};
+
+// AI: Summarize Event
+export const SummarizeEvent = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Find event
+    const event = await Event.findById(id)
+      .populate('createdBy', 'name email avatar')
+      .populate('registeredUsers', 'name avatar');
+    
+    if (!event) {
+      return HttpResponse(res, 404, true, 'Event not found');
+    }
+
+    console.log('Generating summary for event:', event.title);
+
+    // Construct AI prompt for event summarization
+    const summaryPrompt = `Create a comprehensive summary of the following event that gives readers complete understanding without needing to read the full description.
+
+Event Title: ${event.title}
+Event Type: ${event.eventType}
+Description:
+${event.description}
+Location: ${event.location}
+Start Date: ${event.startDate}
+End Date: ${event.endDate}
+Organizer: ${event.organizer.name}
+Capacity: ${event.capacity || 'Unlimited'}
+Registered: ${event.registeredUsers.length} attendees
+
+Provide:
+1. A comprehensive summary (250-400 words) covering:
+   - What the event is about
+   - Main activities and sessions
+   - Key topics or themes to be covered
+   - Learning outcomes or benefits
+   - Important logistical details
+   - Why someone should attend
+2. Key highlights (5-7 most important points about the event)
+3. Specific target audience (who would benefit most)
+4. What attendees will gain (4-5 concrete takeaways or outcomes)
+5. Any prerequisites or requirements
+
+Return ONLY valid JSON:
+{
+  "summary": "comprehensive event summary covering all important details",
+  "highlights": ["highlight1", "highlight2", "highlight3", "highlight4", "highlight5"],
+  "targetAudience": "detailed description of who should attend",
+  "expectations": ["takeaway1", "takeaway2", "takeaway3", "takeaway4"],
+  "prerequisites": "what attendees should know or bring"
+}`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional event summarizer. Always return valid JSON.',
+        },
+        {
+          role: 'user',
+          content: summaryPrompt,
+        },
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.3,
+      max_completion_tokens: 512,
+      response_format: { type: 'json_object' },
+    });
+
+    const aiSummary = JSON.parse(
+      completion.choices[0]?.message?.content || '{}'
+    );
+
+    console.log('Event summary generated successfully');
+
+    return HttpResponse(res, 200, false, 'Event summary generated successfully', {
+      eventId: event._id,
+      title: event.title,
+      eventType: event.eventType,
+      summary: aiSummary.summary,
+      highlights: aiSummary.highlights,
+      targetAudience: aiSummary.targetAudience,
+      expectations: aiSummary.expectations,
+      prerequisites: aiSummary.prerequisites,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      location: event.location,
+      organizer: event.organizer,
+      registeredCount: event.registeredUsers.length,
+      capacity: event.capacity,
+    });
+  } catch (error) {
+    console.error('Error in SummarizeEvent:', error);
+    return HttpResponse(res, 500, true, 'Failed to summarize event', error.message);
   }
 };

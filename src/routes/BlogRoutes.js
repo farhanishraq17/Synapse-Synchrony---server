@@ -11,6 +11,8 @@ import {
   IncrementBlogView,
   GetMyBlogs,
   GetPopularBlogs,
+  GenerateBlogWithAI,
+  SummarizeBlog,
 } from '../controllers/BlogController.js';
 import {
   AddComment,
@@ -49,5 +51,11 @@ router.post('/:blogId/comments', VerifyToken, AddComment);
 router.put('/comments/:commentId', VerifyToken, UpdateComment);
 router.delete('/comments/:commentId', VerifyToken, DeleteComment);
 router.patch('/comments/:commentId/like', VerifyToken, ToggleLikeComment);
+
+// ========== AI ROUTES ==========
+
+// AI-powered features (require authentication)
+router.post('/ai/generate', VerifyToken, GenerateBlogWithAI);
+router.get('/:id/ai/summarize', SummarizeBlog);
 
 export default router;
