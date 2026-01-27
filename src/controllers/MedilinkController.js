@@ -1,4 +1,7 @@
 import MedilinkSession from "../models/MedilinkSession.js";
+import MoodEntry from "../models/MoodEntry.js";
+import StressEntry from "../models/StressEntry.js";
+import WellnessSuggestion from "../models/WellnessSuggestion.js";
 import User from "../models/User.js";
 import { v4 as uuidv4 } from "uuid";
 import { Groq } from "groq-sdk";
@@ -73,12 +76,8 @@ export const sendMessage = async (req, res) => {
       timestamp: new Date(),
     });
 
-    // Prapare context for Groq
-    // Filter out metadata for the API call to save tokens/complexity, keep only role and content
+    // Prepare context for Groq
     const validRoles = ["system", "user", "assistant"];
-    
-    // Convert 'system' to 'system' (Groq supports it usually, or we prepend to first user message)
-    // LLaMA models typically support 'system' role.
     const messagesForAI = session.messages
       .filter(m => validRoles.includes(m.role))
       .map(m => ({
@@ -86,11 +85,7 @@ export const sendMessage = async (req, res) => {
         content: m.content,
       }));
 
-    // 1. Analyze input (Optional parallel call or single prompt)
-    // We will do a single call for response to encourage speed, but we can do a second one for analysis if needed.
-    // For now, let's just get the therapeutic response to match standard flow.
-    // The reference separated analysis and response. We can try to do that too if needed, but let's start with response.
-
+    // Step 1: Get therapeutic response
     const completion = await groq.chat.completions.create({
       messages: messagesForAI,
       model: "llama-3.3-70b-versatile",
@@ -103,56 +98,216 @@ export const sendMessage = async (req, res) => {
 
     const aiResponseContent = completion.choices[0]?.message?.content || "I'm listening. Please go on.";
 
-    // 2. Perform Analysis (Separate light call to categorization)
-    // We can do this asynchronously or skip if speed is key. Let's do a simple one.
-    // We'll skip deep JSON analysis for now to ensure reliability of the main chat, 
-    // but we can add it if the user specifically requested the "analysis" features.
-    // The user asked for "same functionalities", so we SHOULD include analysis.
-
-    let analysisData = {};
+    // Step 2: Generate Mood Report
+    let moodReport = null;
     try {
-        const analysisPrompt = [
-            { role: "system", content: "Analyze the user's message. Output JSON only." },
-            { role: "user", content: `Analyze the therapeutic context of this message: "${message}".
-            Return strictly valid JSON:
-            {
-              "emotionalState": "string (e.g. anxious, calm)",
-              "riskLevel": number (0-10),
-              "themes": ["string"]
-            }` }
-        ];
-        
-        const analysisCompletion = await groq.chat.completions.create({
-             messages: analysisPrompt,
-             model: "llama-3.3-70b-versatile",
-             temperature: 0.1,
-             response_format: { type: "json_object" }
-        });
-        
-        analysisData = JSON.parse(analysisCompletion.choices[0]?.message?.content || "{}");
+      const moodPrompt = [
+        { role: "system", content: "You are a mental health expert analyzing mood. Output JSON only." },
+        { 
+          role: "user", 
+          content: `Analyze the mood from this user message: "${message}".
+          
+Return strictly valid JSON:
+{
+  "mood": "string (e.g., happy, sad, anxious, angry, neutral, stressed, depressed, excited, calm)",
+  "intensity": number (1-10, where 1 is very mild and 10 is very intense),
+  "emotions": ["array", "of", "emotions"],
+  "indicators": ["why you assessed this mood"]
+}` 
+        }
+      ];
+
+      const moodCompletion = await groq.chat.completions.create({
+        messages: moodPrompt,
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.2,
+        response_format: { type: "json_object" }
+      });
+
+      moodReport = JSON.parse(moodCompletion.choices[0]?.message?.content || "{}");
+      
+      // Save Mood Entry to Database
+      const moodEntry = new MoodEntry({
+        userId,
+        sessionId,
+        moodRating: moodReport.intensity || 5,
+        emotions: moodReport.emotions || [moodReport.mood || "neutral"],
+        notes: moodReport.indicators?.join(", ") || "",
+        timestamp: new Date(),
+      });
+      await moodEntry.save();
+
     } catch (err) {
-        console.warn("Analysis failed", err);
-        analysisData = { emotionalState: "unknown", riskLevel: 0, themes: [] };
+      console.warn("Mood analysis failed:", err);
+      moodReport = { mood: "unknown", intensity: 5, emotions: [], indicators: [] };
     }
 
-    // Add AI response to history
+    // Step 3: Generate Stress Report
+    let stressReport = null;
+    try {
+      const stressPrompt = [
+        { role: "system", content: "You are a stress assessment expert. Output JSON only." },
+        { 
+          role: "user", 
+          content: `Analyze the stress level from this user message: "${message}".
+
+Return strictly valid JSON:
+{
+  "stressLevel": number (0-10, where 0 is no stress and 10 is extreme stress),
+  "stressors": ["array", "of", "identified", "stressors"],
+  "physiologicalSigns": ["fatigue", "headache", "etc"],
+  "emotionalSigns": ["worry", "irritability", "etc"],
+  "behavioralSigns": ["avoidance", "procrastination", "etc"]
+}` 
+        }
+      ];
+
+      const stressCompletion = await groq.chat.completions.create({
+        messages: stressPrompt,
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.2,
+        response_format: { type: "json_object" }
+      });
+
+      stressReport = JSON.parse(stressCompletion.choices[0]?.message?.content || "{}");
+
+      // Save Stress Entry to Database
+      const stressEntry = new StressEntry({
+        userId,
+        sessionId,
+        stressLevel: stressReport.stressLevel || 0,
+        stressors: stressReport.stressors || [],
+        physiologicalSigns: stressReport.physiologicalSigns || [],
+        emotionalSigns: stressReport.emotionalSigns || [],
+        behavioralSigns: stressReport.behavioralSigns || [],
+        context: message.substring(0, 200),
+        timestamp: new Date(),
+      });
+      await stressEntry.save();
+
+    } catch (err) {
+      console.warn("Stress analysis failed:", err);
+      stressReport = { stressLevel: 0, stressors: [], physiologicalSigns: [], emotionalSigns: [], behavioralSigns: [] };
+    }
+
+    // Step 4: Generate Wellness Suggestions (if mood is low or stress is high)
+    let suggestions = null;
+    const shouldGenerateSuggestions = 
+      (moodReport?.intensity && moodReport.intensity <= 4) || 
+      (stressReport?.stressLevel && stressReport.stressLevel >= 6);
+
+    if (shouldGenerateSuggestions) {
+      try {
+        const suggestionPrompt = [
+          { role: "system", content: "You are a mental health advisor providing practical coping strategies." },
+          { 
+            role: "user", 
+            content: `Based on this user's state:
+- Mood: ${moodReport.mood} (intensity: ${moodReport.intensity}/10)
+- Stress Level: ${stressReport.stressLevel}/10
+- Stressors: ${stressReport.stressors.join(", ")}
+- Recent message: "${message}"
+
+Provide 3-5 practical, immediate, and actionable coping strategies.
+Make them specific, empathetic, and easy to do right now.
+
+Return strictly valid JSON:
+{
+  "suggestions": ["array", "of", "suggestion", "strings"],
+  "reasoning": "brief explanation of why these suggestions",
+  "urgency": "low|moderate|high|critical"
+}` 
+          }
+        ];
+
+        const suggestionCompletion = await groq.chat.completions.create({
+          messages: suggestionPrompt,
+          model: "llama-3.3-70b-versatile",
+          temperature: 0.7,
+          response_format: { type: "json_object" }
+        });
+
+        suggestions = JSON.parse(suggestionCompletion.choices[0]?.message?.content || "{}");
+
+        // Determine trigger reason
+        let triggeredBy = "both";
+        if (moodReport.intensity <= 4 && stressReport.stressLevel < 6) triggeredBy = "low_mood";
+        else if (stressReport.stressLevel >= 6 && moodReport.intensity > 4) triggeredBy = "high_stress";
+
+        // Determine urgency
+        const urgency = suggestions.urgency || 
+          (stressReport.stressLevel >= 8 || moodReport.intensity <= 2 ? "high" : "moderate");
+
+        // Save Wellness Suggestions to Database
+        const wellnessSuggestion = new WellnessSuggestion({
+          userId,
+          sessionId,
+          suggestions: suggestions.suggestions || [],
+          reasoning: suggestions.reasoning || "",
+          triggeredBy,
+          moodAtTime: {
+            mood: moodReport.mood,
+            intensity: moodReport.intensity,
+          },
+          stressAtTime: {
+            level: stressReport.stressLevel,
+            stressors: stressReport.stressors,
+          },
+          urgency,
+          timestamp: new Date(),
+        });
+        await wellnessSuggestion.save();
+
+      } catch (err) {
+        console.warn("Suggestion generation failed:", err);
+        suggestions = { suggestions: [], reasoning: "", urgency: "moderate" };
+      }
+    }
+
+    // Add AI response to history with metadata
     session.messages.push({
       role: "assistant",
       content: aiResponseContent,
       timestamp: new Date(),
       metadata: {
-        analysis: analysisData
+        analysis: {
+          mood: moodReport,
+          stress: stressReport,
+          suggestions: suggestions,
+        }
       }
     });
 
     await session.save();
 
+    // Prepare response
+    const responseData = {
+      response: aiResponseContent,
+      moodReport: {
+        mood: moodReport.mood,
+        intensity: moodReport.intensity,
+        emotions: moodReport.emotions,
+        timestamp: new Date(),
+      },
+      stressReport: {
+        level: stressReport.stressLevel,
+        stressors: stressReport.stressors,
+        timestamp: new Date(),
+      },
+    };
+
+    // Add suggestions if generated
+    if (suggestions && suggestions.suggestions?.length > 0) {
+      responseData.suggestions = {
+        items: suggestions.suggestions,
+        reasoning: suggestions.reasoning,
+        urgency: suggestions.urgency || "moderate",
+      };
+    }
+
     res.json({
       success: true,
-      data: {
-        response: aiResponseContent,
-        analysis: analysisData,
-      },
+      data: responseData,
     });
 
   } catch (error) {
@@ -200,5 +355,260 @@ export const getAllSessions = async (req, res) => {
   } catch (error) {
     console.error("Error fetching sessions:", error);
     res.status(500).json({ success: false, message: "Error fetching sessions" });
+  }
+};
+
+// NEW: Get Mood History for a User
+export const getMoodHistory = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { sessionId, limit = 50, days = 30 } = req.query;
+
+    const query = { userId };
+    
+    // Optional: filter by session
+    if (sessionId) {
+      query.sessionId = sessionId;
+    }
+
+    // Optional: filter by time range
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - parseInt(days));
+    query.timestamp = { $gte: dateLimit };
+
+    const moodEntries = await MoodEntry.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+
+    // Calculate statistics
+    const totalEntries = moodEntries.length;
+    const avgMood = totalEntries > 0
+      ? moodEntries.reduce((sum, entry) => sum + entry.moodRating, 0) / totalEntries
+      : 0;
+
+    const moodDistribution = {};
+    moodEntries.forEach(entry => {
+      entry.emotions.forEach(emotion => {
+        moodDistribution[emotion] = (moodDistribution[emotion] || 0) + 1;
+      });
+    });
+
+    res.json({
+      success: true,
+      data: {
+        entries: moodEntries,
+        statistics: {
+          totalEntries,
+          averageMoodRating: parseFloat(avgMood.toFixed(2)),
+          moodDistribution,
+          timeRange: `Last ${days} days`,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching mood history:", error);
+    res.status(500).json({ success: false, message: "Error fetching mood history" });
+  }
+};
+
+// NEW: Get Stress History for a User
+export const getStressHistory = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { sessionId, limit = 50, days = 30 } = req.query;
+
+    const query = { userId };
+    
+    if (sessionId) {
+      query.sessionId = sessionId;
+    }
+
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - parseInt(days));
+    query.timestamp = { $gte: dateLimit };
+
+    const stressEntries = await StressEntry.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+
+    // Calculate statistics
+    const totalEntries = stressEntries.length;
+    const avgStress = totalEntries > 0
+      ? stressEntries.reduce((sum, entry) => sum + entry.stressLevel, 0) / totalEntries
+      : 0;
+
+    const stressorFrequency = {};
+    stressEntries.forEach(entry => {
+      entry.stressors.forEach(stressor => {
+        stressorFrequency[stressor] = (stressorFrequency[stressor] || 0) + 1;
+      });
+    });
+
+    const highStressCount = stressEntries.filter(e => e.stressLevel >= 7).length;
+
+    res.json({
+      success: true,
+      data: {
+        entries: stressEntries,
+        statistics: {
+          totalEntries,
+          averageStressLevel: parseFloat(avgStress.toFixed(2)),
+          highStressInstances: highStressCount,
+          commonStressors: stressorFrequency,
+          timeRange: `Last ${days} days`,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching stress history:", error);
+    res.status(500).json({ success: false, message: "Error fetching stress history" });
+  }
+};
+
+// NEW: Get Wellness Suggestions for a User
+export const getWellnessSuggestions = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { sessionId, limit = 20, unreadOnly = false } = req.query;
+
+    const query = { userId };
+    
+    if (sessionId) {
+      query.sessionId = sessionId;
+    }
+
+    if (unreadOnly === 'true') {
+      query.isViewed = false;
+    }
+
+    const suggestions = await WellnessSuggestion.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit));
+
+    res.json({
+      success: true,
+      data: {
+        suggestions,
+        totalCount: suggestions.length,
+        unreadCount: suggestions.filter(s => !s.isViewed).length,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching wellness suggestions:", error);
+    res.status(500).json({ success: false, message: "Error fetching wellness suggestions" });
+  }
+};
+
+// NEW: Mark Suggestion as Viewed
+export const markSuggestionViewed = async (req, res) => {
+  try {
+    const { suggestionId } = req.params;
+    const userId = req.userId;
+
+    const suggestion = await WellnessSuggestion.findOne({
+      _id: suggestionId,
+      userId,
+    });
+
+    if (!suggestion) {
+      return res.status(404).json({ success: false, message: "Suggestion not found" });
+    }
+
+    suggestion.isViewed = true;
+    await suggestion.save();
+
+    res.json({
+      success: true,
+      message: "Suggestion marked as viewed",
+    });
+  } catch (error) {
+    console.error("Error marking suggestion as viewed:", error);
+    res.status(500).json({ success: false, message: "Error updating suggestion" });
+  }
+};
+
+// NEW: Get Wellness Summary (Combined Mood + Stress Overview)
+export const getWellnessSummary = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { days = 7 } = req.query;
+
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - parseInt(days));
+
+    // Get mood data
+    const moodEntries = await MoodEntry.find({
+      userId,
+      timestamp: { $gte: dateLimit },
+    }).sort({ timestamp: -1 });
+
+    // Get stress data
+    const stressEntries = await StressEntry.find({
+      userId,
+      timestamp: { $gte: dateLimit },
+    }).sort({ timestamp: -1 });
+
+    // Get recent suggestions
+    const recentSuggestions = await WellnessSuggestion.find({
+      userId,
+      timestamp: { $gte: dateLimit },
+    })
+      .sort({ timestamp: -1 })
+      .limit(5);
+
+    // Calculate mood statistics
+    const avgMood = moodEntries.length > 0
+      ? moodEntries.reduce((sum, e) => sum + e.moodRating, 0) / moodEntries.length
+      : 0;
+
+    const moodTrend = moodEntries.slice(0, 10).map(e => ({
+      rating: e.moodRating,
+      emotions: e.emotions,
+      timestamp: e.timestamp,
+    }));
+
+    // Calculate stress statistics
+    const avgStress = stressEntries.length > 0
+      ? stressEntries.reduce((sum, e) => sum + e.stressLevel, 0) / stressEntries.length
+      : 0;
+
+    const stressTrend = stressEntries.slice(0, 10).map(e => ({
+      level: e.stressLevel,
+      stressors: e.stressors,
+      timestamp: e.timestamp,
+    }));
+
+    // Overall wellness score (0-100)
+    const wellnessScore = Math.round(
+      ((10 - avgStress) / 10) * 50 + (avgMood / 10) * 50
+    );
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          wellnessScore,
+          averageMood: parseFloat(avgMood.toFixed(2)),
+          averageStress: parseFloat(avgStress.toFixed(2)),
+          timeRange: `Last ${days} days`,
+          totalMoodEntries: moodEntries.length,
+          totalStressEntries: stressEntries.length,
+        },
+        trends: {
+          mood: moodTrend,
+          stress: stressTrend,
+        },
+        recentSuggestions: recentSuggestions.map(s => ({
+          suggestions: s.suggestions,
+          urgency: s.urgency,
+          triggeredBy: s.triggeredBy,
+          timestamp: s.timestamp,
+          isViewed: s.isViewed,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching wellness summary:", error);
+    res.status(500).json({ success: false, message: "Error fetching wellness summary" });
   }
 };
