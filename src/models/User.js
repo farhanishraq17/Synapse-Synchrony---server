@@ -36,6 +36,40 @@ const UserSchema = new mongoose.Schema(
     resetPasswordExpiresAt: Date,
     verificationToken: String,
     verificationTokenExpiresAt: Date,
+    role: {
+      type: String,
+      enum: ['user'],
+      default: 'user',
+    },
+    bio: {
+      type: String,
+      default: '',
+      maxlength: 500,
+    },
+    emergencyContact: {
+      name: { type: String, default: '' },
+      phone: { type: String, default: '' },
+    },
+    phone: {
+      type: String,
+      default: '',
+    },
+    dateOfBirth: {
+      type: Date,
+      default: null,
+    },
+    gender: {
+      type: String,
+      enum: ['male', 'female', 'other', 'prefer_not_to_say', ''],
+      default: '',
+    },
+    address: {
+      street: { type: String, default: '' },
+      city: { type: String, default: '' },
+      state: { type: String, default: '' },
+      zipCode: { type: String, default: '' },
+      country: { type: String, default: '' },
+    },
   },
   {
     timestamps: true, // adds createdAt and updatedAt
