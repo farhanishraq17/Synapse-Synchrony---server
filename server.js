@@ -9,6 +9,7 @@ import EventRoutes from './src/routes/EventRoutes.js';
 import BlogRoutes from './src/routes/BlogRoutes.js';
 import MedilinkRoutes from './src/routes/MedilinkRoutes.js';
 import ProfileRoutes from './src/routes/ProfileRoutes.js';
+import DiagnosisRoutes from './src/routes/DiagnosisRoutes.js';
 import cookieParser from 'cookie-parser';
 import { connectDB } from './src/config/db.js';
 import { initializesockeet } from './src/lib/socket.js';
@@ -37,6 +38,7 @@ app.use('/api/portal/events', EventRoutes);
 app.use('/api/portal/blogs', BlogRoutes);
 app.use('/api/medilink', MedilinkRoutes);
 app.use('/api/portal/profile', ProfileRoutes);
+app.use('/api/portal/diagnosis', DiagnosisRoutes);
 
 connectDB().then(() => {
   server.listen(PORT, () => {
