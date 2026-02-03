@@ -2,6 +2,7 @@
 import Note from '../models/Note.js';
 import { HttpResponse } from '../utils/HttpResponse.js';
 import { generateAIText } from '../config/GroqSetup.js';
+import { generateAITextWithImage } from '../config/GeminiSetup.js';
 
 // Create Note
 export const CreateNote = async (req, res) => {
@@ -173,5 +174,37 @@ Title: ${title.trim()}`;
   } catch (error) {
     console.error('Error in GenerateNoteWithAI:', error);
     return HttpResponse(res, 500, true, 'Failed to generate note with AI', error.message);
+  }
+};
+
+// Extract text from image using Gemini Vision
+export const ExtractTextFromImage = async (req, res) => {
+  try {
+    const { imageBase64, mimeType } = req.body;
+
+    if (!imageBase64) {
+      return HttpResponse(res, 400, true, 'Image data is required');
+    }
+
+    const validMimeType = mimeType || 'image/jpeg';
+    
+    const prompt = `Extract ALL text from this image. If it contains handwritten text, transcribe it accurately. If it contains printed text, extract it exactly as shown. Return ONLY the extracted text with no additional commentary. Preserve line breaks and formatting where appropriate.`;
+
+    const extractedText = await generateAITextWithImage(
+      prompt,
+      imageBase64,
+      validMimeType
+    );
+
+    if (extractedText.startsWith('Error:')) {
+      return HttpResponse(res, 500, true, 'OCR failed', { error: extractedText });
+    }
+
+    return HttpResponse(res, 200, false, 'Text extracted successfully', {
+      text: extractedText.trim(),
+    });
+  } catch (error) {
+    console.error('Error in ExtractTextFromImage:', error);
+    return HttpResponse(res, 500, true, 'Server error', error.message);
   }
 };

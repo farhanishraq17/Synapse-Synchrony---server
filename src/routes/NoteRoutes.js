@@ -8,6 +8,7 @@ import {
   UpdateNote,
   DeleteNote,
   GenerateNoteWithAI,
+  ExtractTextFromImage,
 } from '../controllers/NoteController.js';
 
 const router = express.Router();
@@ -18,5 +19,6 @@ router.get('/:id', VerifyToken, GetNoteById);
 router.put('/:id', VerifyToken, UpdateNote);
 router.delete('/:id', VerifyToken, DeleteNote);
 router.post('/ai/generate', VerifyToken, GenerateNoteWithAI);
+router.post('/ocr/extract', VerifyToken, ExtractTextFromImage);
 
 export default router;
