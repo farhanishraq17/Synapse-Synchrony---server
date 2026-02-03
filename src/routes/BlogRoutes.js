@@ -13,6 +13,9 @@ import {
   GetPopularBlogs,
   GenerateBlogWithAI,
   SummarizeBlog,
+  ToggleBookmarkBlog,
+  GetMyBookmarkedBlogs,
+  IncrementBlogShare,
 } from '../controllers/BlogController.js';
 import {
   AddComment,
@@ -32,13 +35,16 @@ router.get('/', GetAllBlogs);
 router.get('/popular', GetPopularBlogs);
 router.get('/:id', GetSingleBlog);
 router.patch('/:id/view', IncrementBlogView);
+router.patch('/:id/share', IncrementBlogShare);
 
 // Protected routes (require authentication)
 router.post('/', VerifyToken, CreateBlog);
 router.put('/:id', VerifyToken, UpdateBlog);
 router.delete('/:id', VerifyToken, DeleteBlog);
 router.patch('/:id/like', VerifyToken, ToggleLikeBlog);
+router.patch('/:id/bookmark', VerifyToken, ToggleBookmarkBlog);
 router.get('/user/my-blogs', VerifyToken, GetMyBlogs);
+router.get('/user/my-bookmarks', VerifyToken, GetMyBookmarkedBlogs);
 
 // ========== COMMENT ROUTES ==========
 

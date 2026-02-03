@@ -70,11 +70,20 @@ const UserSchema = new mongoose.Schema(
       zipCode: { type: String, default: '' },
       country: { type: String, default: '' },
     },
+    bookmarkedBlogs: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Blog',
+      },
+    ],
   },
   {
     timestamps: true, // adds createdAt and updatedAt
   }
 );
+
+// Index for bookmarked blogs
+UserSchema.index({ bookmarkedBlogs: 1 });
 
 const User = mongoose.model('User', UserSchema, 'users');
 export default User;

@@ -1,6 +1,7 @@
 // controllers/BlogController.js
 import Blog from '../models/Blog.js';
 import BlogComment from '../models/BlogComment.js';
+import User from '../models/User.js';
 import { HttpResponse } from '../utils/HttpResponse.js';
 import cloudinary from '../config/cloudinary.js';
 import { Groq } from 'groq-sdk';
@@ -483,5 +484,127 @@ Return ONLY valid JSON:
   } catch (error) {
     console.error('Error in SummarizeBlog:', error);
     return HttpResponse(res, 500, true, 'Failed to summarize blog', error.message);
+  }
+};
+
+// Toggle Bookmark on Blog
+export const ToggleBookmarkBlog = async (req, res) => {
+  const userId = req.userId;
+  const { id } = req.params;
+
+  try {
+    // Find blog
+    const blog = await Blog.findById(id);
+    if (!blog) {
+      return HttpResponse(res, 404, true, 'Blog not found');
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return HttpResponse(res, 404, true, 'User not found');
+    }
+
+    // Check if user already bookmarked
+    const hasBookmarked = user.bookmarkedBlogs.includes(id);
+
+    let updatedUser;
+    if (hasBookmarked) {
+      // Remove bookmark
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $pull: { bookmarkedBlogs: id } },
+        { new: true }
+      ).select('bookmarkedBlogs');
+    } else {
+      // Add bookmark
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $addToSet: { bookmarkedBlogs: id } },
+        { new: true }
+      ).select('bookmarkedBlogs');
+    }
+
+    return HttpResponse(
+      res,
+      200,
+      false,
+      hasBookmarked ? 'Blog removed from bookmarks' : 'Blog bookmarked successfully',
+      {
+        isBookmarked: !hasBookmarked,
+        bookmarkedBlogs: updatedUser.bookmarkedBlogs,
+      }
+    );
+  } catch (error) {
+    console.error('Error in ToggleBookmarkBlog:', error);
+    return HttpResponse(res, 500, true, 'Server error', error.message);
+  }
+};
+
+// Get User's Bookmarked Blogs
+export const GetMyBookmarkedBlogs = async (req, res) => {
+  const userId = req.userId;
+
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    // Find user and populate bookmarked blogs
+    const user = await User.findById(userId).populate({
+      path: 'bookmarkedBlogs',
+      populate: [
+        { path: 'author', select: 'name email avatar' },
+        { path: 'commentCount' },
+      ],
+      options: {
+        sort: { createdAt: -1 },
+        skip: (parseInt(page) - 1) * parseInt(limit),
+        limit: parseInt(limit),
+      },
+    });
+
+    if (!user) {
+      return HttpResponse(res, 404, true, 'User not found');
+    }
+
+    const total = user.bookmarkedBlogs.length;
+
+    return HttpResponse(res, 200, false, 'Bookmarked blogs fetched successfully', {
+      blogs: user.bookmarkedBlogs,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalBlogs: total,
+        blogsPerPage: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    console.error('Error in GetMyBookmarkedBlogs:', error);
+    return HttpResponse(res, 500, true, 'Server error', error.message);
+  }
+};
+
+// Increment Share Count
+export const IncrementBlogShare = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const blog = await Blog.findByIdAndUpdate(
+      id,
+      { $inc: { shares: 1 } },
+      { new: true }
+    )
+      .populate('author', 'name email avatar')
+      .populate('commentCount');
+
+    if (!blog) {
+      return HttpResponse(res, 404, true, 'Blog not found');
+    }
+
+    return HttpResponse(res, 200, false, 'Share count updated', {
+      shares: blog.shares,
+    });
+  } catch (error) {
+    console.error('Error in IncrementBlogShare:', error);
+    return HttpResponse(res, 500, true, 'Server error', error.message);
   }
 };

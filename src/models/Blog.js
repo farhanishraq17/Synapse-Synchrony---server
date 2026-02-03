@@ -46,6 +46,10 @@ const BlogSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    shares: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
@@ -57,6 +61,7 @@ BlogSchema.index({ author: 1, createdAt: -1 });
 BlogSchema.index({ category: 1 });
 BlogSchema.index({ tags: 1 });
 BlogSchema.index({ isPublished: 1, createdAt: -1 });
+BlogSchema.index({ shares: -1 });
 
 // Virtual for like count
 BlogSchema.virtual('likeCount').get(function () {
