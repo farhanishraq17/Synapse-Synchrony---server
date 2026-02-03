@@ -16,6 +16,7 @@ import {
   ToggleBookmarkBlog,
   GetMyBookmarkedBlogs,
   IncrementBlogShare,
+  GetMyLikedBlogs,
 } from '../controllers/BlogController.js';
 import {
   AddComment,
@@ -45,6 +46,7 @@ router.patch('/:id/like', VerifyToken, ToggleLikeBlog);
 router.patch('/:id/bookmark', VerifyToken, ToggleBookmarkBlog);
 router.get('/user/my-blogs', VerifyToken, GetMyBlogs);
 router.get('/user/my-bookmarks', VerifyToken, GetMyBookmarkedBlogs);
+router.get('/user/my-liked-blogs', VerifyToken, GetMyLikedBlogs);
 
 // ========== COMMENT ROUTES ==========
 

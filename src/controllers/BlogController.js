@@ -608,3 +608,42 @@ export const IncrementBlogShare = async (req, res) => {
     return HttpResponse(res, 500, true, 'Server error', error.message);
   }
 };
+
+// Get User's Liked Blogs
+export const GetMyLikedBlogs = async (req, res) => {
+  const userId = req.userId;
+
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    // Find all blogs where user's ID is in the likes array
+    const filter = {
+      likes: userId,
+      isPublished: true,
+    };
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const blogs = await Blog.find(filter)
+      .populate('author', 'name email avatar')
+      .populate('commentCount')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Blog.countDocuments(filter);
+
+    return HttpResponse(res, 200, false, 'Liked blogs fetched successfully', {
+      blogs,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalBlogs: total,
+        blogsPerPage: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    console.error('Error in GetMyLikedBlogs:', error);
+    return HttpResponse(res, 500, true, 'Server error', error.message);
+  }
+};
