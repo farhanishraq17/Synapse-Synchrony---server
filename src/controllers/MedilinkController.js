@@ -6,6 +6,7 @@ import User from "../models/User.js";
 import { v4 as uuidv4 } from "uuid";
 import { Groq } from "groq-sdk";
 import dotenv from "dotenv";
+import { sendSMS } from "../utils/smsService.js";
 
 dotenv.config();
 
@@ -188,6 +189,69 @@ Return strictly valid JSON:
     } catch (err) {
       console.warn("Stress analysis failed:", err);
       stressReport = { stressLevel: 0, stressors: [], physiologicalSigns: [], emotionalSigns: [], behavioralSigns: [] };
+    }
+
+    // Step 3.5: Emergency SMS - Send alert if mood/stress is critical
+    try {
+      // Define critical thresholds
+      const isCriticalMood = moodReport?.intensity && moodReport.intensity <= 3;
+      const isCriticalStress = stressReport?.stressLevel && stressReport.stressLevel >= 7;
+      
+      console.log(`[SMS CHECK] Mood: ${moodReport?.intensity}/10, Stress: ${stressReport?.stressLevel}/10`);
+      console.log(`[SMS CHECK] Critical mood: ${isCriticalMood}, Critical stress: ${isCriticalStress}`);
+      
+      if (isCriticalMood || isCriticalStress) {
+        console.log('[SMS ALERT] ⚠️  Critical levels detected! Checking for emergency contact...');
+        
+        // Fetch user data to get emergency contact
+        const user = await User.findById(userId).select('name emergencyContact');
+        
+        console.log(`[SMS CHECK] User: ${user?.name}, Emergency Contact: ${user?.emergencyContact?.name || 'None'}, Phone: ${user?.emergencyContact?.phone || 'Not set'}`);
+        
+        if (user?.emergencyContact?.phone) {
+          const emergencyPhone = user.emergencyContact.phone;
+          const emergencyName = user.emergencyContact.name || 'Emergency Contact';
+          const userName = user.name || 'User';
+          
+          // Build detailed emergency message
+          let alertMessage = `MEDILINK ALERT: ${userName} may need support.\n\n`;
+          
+          if (isCriticalMood) {
+            alertMessage += `Mood: ${moodReport.mood || 'concerning'} (${moodReport.intensity}/10 - Critical)\n`;
+            if (moodReport.emotions?.length) {
+              alertMessage += `Emotions: ${moodReport.emotions.join(', ')}\n`;
+            }
+          }
+          
+          if (isCriticalStress) {
+            alertMessage += `Stress: ${stressReport.stressLevel}/10 (Critical)\n`;
+            if (stressReport.stressors?.length) {
+              alertMessage += `Stressors: ${stressReport.stressors.slice(0, 2).join(', ')}\n`;
+            }
+          }
+          
+          alertMessage += `\nPlease check in with them. Time: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' })}`;
+          
+          console.log(`[SMS SENDING] 📤 Sending emergency SMS to ${emergencyName} (${emergencyPhone})...`);
+          console.log(`[SMS CONTENT] Message: "${alertMessage}"`);
+          
+          const smsResult = await sendSMS(emergencyPhone, alertMessage);
+          
+          if (smsResult.success) {
+            console.log(`[SMS SUCCESS] ✅ Emergency SMS sent successfully to ${emergencyName} (${emergencyPhone}) for user ${userName}`);
+            console.log(`[SMS SUCCESS] API Response:`, smsResult.data);
+          } else {
+            console.warn(`[SMS FAILED] ❌ Emergency SMS failed for user ${userName}:`, smsResult.error);
+          }
+        } else {
+          console.log(`[SMS SKIPPED] ⚠️  Critical mood/stress detected for user ${userId} but no emergency contact is set`);
+        }
+      } else {
+        console.log('[SMS CHECK] ✓ Mood and stress levels are within safe range. No SMS needed.');
+      }
+    } catch (smsError) {
+      console.error('[SMS ERROR] ❌ Emergency SMS error:', smsError);
+      // Don't fail the whole request if SMS fails
     }
 
     // Step 4: Generate Wellness Suggestions (if mood is low or stress is high)
