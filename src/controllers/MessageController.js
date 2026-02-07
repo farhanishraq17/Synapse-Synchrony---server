@@ -6,6 +6,7 @@ import cloudinary from '../config/cloudinary.js';
 import {
   emitLastMessageToParticipants,
   emitNewMessageToChatRoom,
+  emitNewChatToParticipants,
 } from '../lib/socket.js';
 import User from '../models/User.js';
 import { generateAIText } from '../config/GroqSetup.js';
@@ -364,3 +365,123 @@ export const GetOrCreateAIChat = async (req, res) => {
     return HttpResponse(res, 500, true, 'Internal Server Error');
   }
 };
+
+/**
+ * 🎤 Create Voice Message
+ * 
+ * This endpoint handles voice message uploads, stores them in Cloudinary,
+ * and creates a voice message in the database.
+ * 
+ * @route POST /api/chat/create-voice-message
+ * @body { chatId: string, replyTo?: string }
+ * @file audio file (multipart/form-data)
+ */
+export const CreateVoiceMessage = async (req, res) => {
+  const userId = req.userId;
+  const { chatId, replyTo } = req.body;
+  const audioFile = req.file;
+
+  console.log('🎤 Voice message request:', { userId, chatId, hasFile: !!audioFile });
+
+  // Validate inputs
+  if (!chatId) {
+    return HttpResponse(res, 400, true, 'Chat ID is required');
+  }
+
+  if (!audioFile) {
+    return HttpResponse(res, 400, true, 'Audio file is required');
+  }
+
+  try {
+    // Verify user is participant in chat
+    const chat = await Chat.findOne({
+      _id: chatId,
+      participants: {
+        $in: [userId],
+      },
+    });
+
+    if (!chat) {
+      return HttpResponse(res, 404, true, 'Chat Not Found OR Unauthorized');
+    }
+
+    // Verify replyTo message if provided
+    if (replyTo) {
+      const replyMessage = await Message.findOne({
+        _id: replyTo,
+        chatId,
+      });
+      if (!replyMessage) {
+        return HttpResponse(res, 404, true, 'Reply to Message Not Found');
+      }
+    }
+
+    console.log('📤 Uploading audio to Cloudinary...');
+
+    // Upload audio to Cloudinary
+    let voiceUrl;
+    let duration = 0;
+    try {
+      const uploadRes = await cloudinary.uploader.upload(audioFile.path, {
+        folder: 'synapse/voice-messages',
+        resource_type: 'video', // Cloudinary uses 'video' for audio files
+        format: 'mp3', // Convert to MP3 for consistency
+      });
+
+      voiceUrl = uploadRes.secure_url;
+      duration = uploadRes.duration || 0;
+
+      console.log('✅ Audio uploaded:', { url: voiceUrl, duration });
+    } catch (uploadErr) {
+      console.error('Cloudinary Upload Error:', uploadErr);
+      return HttpResponse(res, 500, true, 'Audio upload failed');
+    }
+
+    // Create voice message
+    const newMessage = await Message.create({
+      chatId,
+      sender: userId,
+      messageType: 'voice',
+      voiceUrl,
+      voiceDuration: Math.round(duration),
+      replyTo: replyTo || null,
+    });
+
+    await newMessage.populate([
+      { path: 'sender', select: 'name avatar' },
+      {
+        path: 'replyTo',
+        select: 'content image voiceUrl voiceDuration messageType sender',
+        populate: {
+          path: 'sender',
+          select: 'name avatar',
+        },
+      },
+    ]);
+
+    // Update chat's last message
+    chat.lastMessage = newMessage._id;
+    await chat.save();
+
+    console.log('✅ Voice message created:', newMessage._id);
+
+    // Websocket emit the New Message to the Chat Room
+    emitNewMessageToChatRoom(userId, chatId, newMessage);
+
+    // Websocket emit the Last Message to the Participants
+    const allParticipantIds = chat.participants.map((id) => id.toString());
+    emitLastMessageToParticipants(allParticipantIds, chatId, newMessage);
+
+    return HttpResponse(
+      res,
+      201,
+      false,
+      'Voice Message Created Successfully',
+      newMessage
+    );
+  } catch (error) {
+    console.error('Error creating voice message:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
+

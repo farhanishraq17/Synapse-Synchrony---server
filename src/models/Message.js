@@ -8,11 +8,27 @@ const MessageSchema = new mongoose.Schema(
       ref: 'Chat',
       required: true,
     },
+    messageType: {
+      type: String,
+      enum: ['text', 'image', 'voice', 'file'],
+      default: 'text',
+    },
     content: {
       type: String,
     },
     image: {
       type: String,
+    },
+    // Voice message fields
+    voiceUrl: {
+      type: String,
+    },
+    voiceDuration: {
+      type: Number, // Duration in seconds
+    },
+    voiceWaveform: {
+      type: [Number], // Array of amplitude values for waveform visualization
+      default: [],
     },
     sender: {
       type: Schema.Types.ObjectId,
