@@ -10,7 +10,7 @@ const MessageSchema = new mongoose.Schema(
     },
     messageType: {
       type: String,
-      enum: ['text', 'image', 'voice', 'file'],
+      enum: ['text', 'image', 'voice', 'location', 'file'],
       default: 'text',
     },
     content: {
@@ -29,6 +29,21 @@ const MessageSchema = new mongoose.Schema(
     voiceWaveform: {
       type: [Number], // Array of amplitude values for waveform visualization
       default: [],
+    },
+    // Location message fields
+    location: {
+      latitude: {
+        type: Number,
+      },
+      longitude: {
+        type: Number,
+      },
+      address: {
+        type: String, // Reverse geocoded address
+      },
+      placeName: {
+        type: String, // Optional place name
+      },
     },
     sender: {
       type: Schema.Types.ObjectId,

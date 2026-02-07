@@ -8,7 +8,7 @@ import {
   getStreamToken,
   GetUserChats,
 } from '../controllers/ChatController.js';
-import { CreateMessage, CreateVoiceMessage, GetOrCreateAIChat, SendAIMessage } from '../controllers/MessageController.js';
+import { CreateMessage, CreateVoiceMessage, CreateLocationMessage, GetOrCreateAIChat, SendAIMessage } from '../controllers/MessageController.js';
 
 const router = express.Router();
 
@@ -29,6 +29,7 @@ const upload = multer({
 router.post('/create-chat', VerifyToken, CreateChat);
 router.post('/create-message', VerifyToken, CreateMessage);
 router.post('/create-voice-message', VerifyToken, upload.single('audio'), CreateVoiceMessage);
+router.post('/create-location-message', VerifyToken, CreateLocationMessage);
 router.get('/get-user-chats', VerifyToken, GetUserChats);
 router.get('/get-single-chat/:id', VerifyToken, GetSingleChat);
 router.get('/token', VerifyToken, getStreamToken);

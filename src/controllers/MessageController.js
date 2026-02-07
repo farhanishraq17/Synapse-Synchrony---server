@@ -485,3 +485,91 @@ export const CreateVoiceMessage = async (req, res) => {
   }
 };
 
+export const CreateLocationMessage = async (req, res) => {
+  const userId = req.userId;
+  const { chatId, latitude, longitude, address, placeName, content, replyTo } = req.body;
+
+  // Validate required fields
+  if (!latitude || !longitude) {
+    return HttpResponse(res, 400, true, 'Latitude and longitude are required');
+  }
+
+  if (!chatId) {
+    return HttpResponse(res, 400, true, 'Chat ID is required');
+  }
+
+  try {
+    // Verify chat exists and user is a participant
+    const chat = await Chat.findOne({
+      _id: chatId,
+      participants: { $in: [userId] },
+    });
+
+    if (!chat) {
+      return HttpResponse(res, 404, true, 'Chat Not Found OR Unauthorized');
+    }
+
+    // Verify replyTo message if provided
+    if (replyTo) {
+      const replyMessage = await Message.findOne({
+        _id: replyTo,
+        chatId,
+      });
+      if (!replyMessage) {
+        return HttpResponse(res, 404, true, 'Reply to Message Not Found');
+      }
+    }
+
+    // Create location message
+    const newMessage = await Message.create({
+      chatId,
+      sender: userId,
+      messageType: 'location',
+      location: {
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        address: address || '',
+        placeName: placeName || '',
+      },
+      content: content || '', // Optional message text
+      replyTo: replyTo || null,
+    });
+
+    // Populate sender and replyTo
+    await newMessage.populate([
+      { path: 'sender', select: 'name avatar' },
+      {
+        path: 'replyTo',
+        select: 'content image voiceUrl voiceDuration location messageType sender',
+        populate: {
+          path: 'sender',
+          select: 'name avatar',
+        },
+      },
+    ]);
+
+    // Update chat's last message
+    chat.lastMessage = newMessage._id;
+    await chat.save();
+
+    console.log('✅ Location message created:', newMessage._id);
+
+    // Websocket emit the New Message to the Chat Room
+    emitNewMessageToChatRoom(userId, chatId, newMessage);
+
+    // Websocket emit the Last Message to the Participants
+    const allParticipantIds = chat.participants.map((id) => id.toString());
+    emitLastMessageToParticipants(allParticipantIds, chatId, newMessage);
+
+    return HttpResponse(
+      res,
+      201,
+      false,
+      'Location Message Created Successfully',
+      newMessage
+    );
+  } catch (error) {
+    console.error('Error creating location message:', error);
+    return HttpResponse(res, 500, true, 'Internal Server Error');
+  }
+};
