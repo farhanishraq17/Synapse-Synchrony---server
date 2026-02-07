@@ -30,6 +30,10 @@ const MessageSchema = new mongoose.Schema(
       type: [Number], // Array of amplitude values for waveform visualization
       default: [],
     },
+    voiceTranscription: {
+      type: String, // Transcribed text from voice message
+      default: '',
+    },
     // Location message fields
     location: {
       latitude: {

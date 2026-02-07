@@ -9,7 +9,9 @@ import {
   emitNewChatToParticipants,
 } from '../lib/socket.js';
 import User from '../models/User.js';
-import { generateAIText } from '../config/GroqSetup.js';
+import { generateAIText, groq } from '../config/GroqSetup.js';
+import fs from 'fs';
+import path from 'path';
 
 export const CreateMessage = async (req, res) => {
   const userId = req.userId;
@@ -437,6 +439,45 @@ export const CreateVoiceMessage = async (req, res) => {
       return HttpResponse(res, 500, true, 'Audio upload failed');
     }
 
+    // 🎙️ Perform transcription using Groq Whisper
+    let transcription = '';
+    // Append extension to help Groq detect format (e.g., .webm or .mp3)
+    const tempFilePath = audioFile.path + (path.extname(audioFile.originalname) || '.webm');
+
+    try {
+      // Rename file to include extension
+      if (fs.existsSync(audioFile.path)) {
+        fs.renameSync(audioFile.path, tempFilePath);
+      }
+      
+      console.log('🎙️ Transcribing audio with Groq...', { tempFilePath });
+      
+      const transcriptionCompletion = await groq.audio.transcriptions.create({
+        file: fs.createReadStream(tempFilePath),
+        model: 'whisper-large-v3', // or 'whisper-large-v3-turbo' if available for speed
+        response_format: 'json',
+        language: 'en', // Optional: defaulting to English or auto-detect
+      });
+      
+      transcription = transcriptionCompletion.text || '';
+      console.log('✅ Transcription Result:', transcription);
+    } catch (transcriptionError) {
+      console.error('⚠️ Transcription failed DETAILS:', {
+        message: transcriptionError.message,
+        name: transcriptionError.name,
+      });
+    } finally {
+      // Cleanup: Delete the temp file
+      try {
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+          console.log('🧹 Cleaned up temp file:', tempFilePath);
+        }
+      } catch (cleanupError) {
+        console.error('Error cleaning up temp file:', cleanupError);
+      }
+    }
+
     // Create voice message
     const newMessage = await Message.create({
       chatId,
@@ -444,6 +485,7 @@ export const CreateVoiceMessage = async (req, res) => {
       messageType: 'voice',
       voiceUrl,
       voiceDuration: Math.round(duration),
+      voiceTranscription: transcription,
       replyTo: replyTo || null,
     });
 

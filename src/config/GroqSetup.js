@@ -2,7 +2,7 @@ import Groq from 'groq-sdk';
 import 'dotenv/config';
 import { MDtoText } from '../utils/utils.js';
 
-const groq = new Groq({
+export const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
