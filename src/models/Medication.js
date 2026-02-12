@@ -1,3 +1,8 @@
+/**
+ * @deprecated This model is no longer used as of the diagnosis system overhaul.
+ * The AI no longer prescribes medications. Kept for backward compatibility
+ * with existing database records. Do not use in new code.
+ */
 import mongoose from "mongoose";
 
 const medicationSchema = new mongoose.Schema(

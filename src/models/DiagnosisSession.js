@@ -22,8 +22,17 @@ const diagnosisSessionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "completed", "archived"],
+      enum: ["active", "assessed", "completed"],
       default: "active",
+    },
+    phase: {
+      type: String,
+      enum: ["intake", "questioning", "assessing", "assessed", "follow_up"],
+      default: "intake",
+    },
+    questionsAsked: {
+      type: Number,
+      default: 0,
     },
     messages: [
       {
@@ -40,25 +49,36 @@ const diagnosisSessionSchema = new mongoose.Schema(
           type: Date,
           default: Date.now,
         },
-        diagnosis: {
-          possibleDiseases: [String],
-          primaryDiagnosis: String,
+        assessment: {
+          possibleConditions: [String],
+          primaryCondition: String,
           confidence: String,
           severity: String,
           urgency: String,
-          needsDoctorImmediately: Boolean,
-          recommendations: [String],
-          medications: [String],
-          warning: String,
-          whenToSeekHelp: [String],
+          shouldVisitDoctor: Boolean,
+          visitTimeframe: String,
+          reliefSuggestions: [String],
+          warningSignsToWatch: [String],
           disclaimer: String,
         },
       },
     ],
+    userLocation: {
+      latitude: Number,
+      longitude: Number,
+      address: String,
+      sharedAt: Date,
+    },
   },
   { timestamps: true }
 );
 
-const DiagnosisSession = mongoose.model("DiagnosisSession", diagnosisSessionSchema);
+diagnosisSessionSchema.index({ userId: 1, updatedAt: -1 });
+diagnosisSessionSchema.index({ sessionId: 1 });
+
+const DiagnosisSession = mongoose.model(
+  "DiagnosisSession",
+  diagnosisSessionSchema
+);
 
 export default DiagnosisSession;

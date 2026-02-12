@@ -1,8 +1,10 @@
 import DiagnosisSession from "../models/DiagnosisSession.js";
-import Medication from "../models/Medication.js";
 import { v4 as uuidv4 } from "uuid";
-import { diagnoseMedical, getMedicationInfo } from "../config/MedicalAI.js";
-import { HttpResponse } from "../utils/HttpResponse.js";
+import {
+  sendDiagnosisMessage,
+  getInitialGreeting,
+} from "../config/MedicalAI.js";
+import axios from "axios";
 
 // Create a new diagnosis session
 export const createDiagnosisSession = async (req, res) => {
@@ -10,11 +12,16 @@ export const createDiagnosisSession = async (req, res) => {
     const userId = req.userId;
     const sessionId = uuidv4();
 
+    // Create session with the AI's greeting already in it
+    const greeting = getInitialGreeting();
+
     const session = new DiagnosisSession({
       userId,
       sessionId,
       sessionType: "medical_diagnosis",
-      messages: [],
+      phase: "intake",
+      questionsAsked: 1,
+      messages: [greeting],
     });
 
     await session.save();
@@ -23,6 +30,7 @@ export const createDiagnosisSession = async (req, res) => {
       success: true,
       message: "Diagnosis session created successfully",
       sessionId: session.sessionId,
+      greeting: greeting,
     });
   } catch (error) {
     console.error("Error creating diagnosis session:", error);
@@ -33,17 +41,18 @@ export const createDiagnosisSession = async (req, res) => {
   }
 };
 
-// Submit symptoms and get diagnosis
-export const submitSymptoms = async (req, res) => {
+// Send a message in the diagnosis conversation
+export const sendMessage = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { symptoms } = req.body;
+    const { message } = req.body;
     const userId = req.userId;
 
-    if (!symptoms || !symptoms.trim()) {
+    // Validate input
+    if (!message || !message.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Symptoms description is required",
+        message: "Message cannot be empty",
       });
     }
 
@@ -56,7 +65,7 @@ export const submitSymptoms = async (req, res) => {
       });
     }
 
-    // Verify user owns this session
+    // Verify ownership
     if (session.userId.toString() !== userId.toString()) {
       return res.status(403).json({
         success: false,
@@ -67,134 +76,124 @@ export const submitSymptoms = async (req, res) => {
     // Add user message to session
     session.messages.push({
       role: "user",
-      content: symptoms,
+      content: message.trim(),
       timestamp: new Date(),
     });
 
-    // Get AI diagnosis
-    console.log("🔍 Analyzing symptoms with Medical AI...");
-    const diagnosis = await diagnoseMedical(symptoms);
+    // Build conversation history for AI (only role + content)
+    const conversationHistory = session.messages.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
 
-    // Save medications to Medication collection
-    if (diagnosis.medications && diagnosis.medications.length > 0) {
-      const medicationsToSave = diagnosis.medications.map((med) => {
-        // Parse medication string (e.g., "Napa 500mg" or "Ace Plus")
-        const medName = med.split("-")[0].trim(); // Get first part before any dash
-        
-        return {
-          userId,
-          sessionId,
-          diagnosisSessionId: session._id,
-          medicationName: med,
-          brandName: medName,
-          purpose: diagnosis.primaryDiagnosis,
-          prescribedFor: symptoms.substring(0, 200),
-          status: "suggested",
-          timestamp: new Date(),
-        };
+    // Send to AI
+    console.log(
+      `Diagnosis session ${sessionId} — sending message #${session.messages.length}`
+    );
+    const aiResponse = await sendDiagnosisMessage(conversationHistory);
+
+    // Handle error responses from AI
+    if (aiResponse.type === "error") {
+      session.messages.push({
+        role: "assistant",
+        content: aiResponse.message,
+        timestamp: new Date(),
       });
+      await session.save();
 
-      await Medication.insertMany(medicationsToSave);
+      return res.json({
+        success: true,
+        data: {
+          type: "error",
+          message: aiResponse.message,
+        },
+      });
     }
 
-    // Add AI response with diagnosis to session
-    session.messages.push({
+    // Update session phase and question count
+    if (aiResponse.questionsAskedSoFar) {
+      session.questionsAsked = aiResponse.questionsAskedSoFar;
+    }
+
+    if (aiResponse.type === "assessment") {
+      session.phase = "assessed";
+      session.status = "assessed";
+    } else if (aiResponse.type === "follow_up") {
+      session.phase = "follow_up";
+    } else {
+      session.phase = "questioning";
+    }
+
+    // Build the assistant message to store
+    const assistantMessage = {
       role: "assistant",
-      content: `Based on your symptoms, here's my medical assessment:
-
-**Primary Diagnosis:** ${diagnosis.primaryDiagnosis}
-**Confidence:** ${diagnosis.confidence}
-**Severity:** ${diagnosis.severity}
-**Urgency:** ${diagnosis.urgency}
-
-${diagnosis.needsDoctorImmediately ? "⚠️ **URGENT:** You should seek immediate medical attention!" : ""}
-
-**Possible Conditions:**
-${diagnosis.possibleDiseases.map((d, i) => `${i + 1}. ${d}`).join("\n")}
-
-**Recommended Medications (Bangladesh-available):**
-${diagnosis.medications.map((m, i) => `${i + 1}. ${m}`).join("\n")}
-
-**Self-Care Recommendations:**
-${diagnosis.recommendations.map((r, i) => `${i + 1}. ${r}`).join("\n")}
-
-**Warning Signs - Seek Help If:**
-${diagnosis.whenToSeekHelp.map((w, i) => `${i + 1}. ${w}`).join("\n")}
-
-⚠️ **Important:** ${diagnosis.warning}
-
-${diagnosis.disclaimer}`,
+      content: aiResponse.message,
       timestamp: new Date(),
-      diagnosis: {
-        possibleDiseases: diagnosis.possibleDiseases,
-        primaryDiagnosis: diagnosis.primaryDiagnosis,
-        confidence: diagnosis.confidence,
-        severity: diagnosis.severity,
-        urgency: diagnosis.urgency,
-        needsDoctorImmediately: diagnosis.needsDoctorImmediately,
-        recommendations: diagnosis.recommendations,
-        medications: diagnosis.medications,
-        warning: diagnosis.warning,
-        whenToSeekHelp: diagnosis.whenToSeekHelp,
-        disclaimer: diagnosis.disclaimer,
-      },
-    });
+    };
 
+    // If this is an assessment, attach the structured data
+    if (aiResponse.assessment) {
+      assistantMessage.assessment = {
+        possibleConditions: aiResponse.assessment.possibleConditions || [],
+        primaryCondition: aiResponse.assessment.primaryCondition || "",
+        confidence: aiResponse.assessment.confidence || "low",
+        severity: aiResponse.assessment.severity || "mild",
+        urgency: aiResponse.assessment.urgency || "non-urgent",
+        shouldVisitDoctor: aiResponse.assessment.shouldVisitDoctor ?? true,
+        visitTimeframe: aiResponse.assessment.visitTimeframe || "",
+        reliefSuggestions: aiResponse.assessment.reliefSuggestions || [],
+        warningSignsToWatch: aiResponse.assessment.warningSignsToWatch || [],
+        disclaimer:
+          aiResponse.assessment.disclaimer ||
+          "This is an AI-generated assessment. Always consult a healthcare professional.",
+      };
+    }
+
+    session.messages.push(assistantMessage);
     await session.save();
 
-    // Return structured diagnosis
+    // Return response to client
     res.json({
       success: true,
       data: {
-        diagnosis: {
-          possibleDiseases: diagnosis.possibleDiseases,
-          primaryDiagnosis: diagnosis.primaryDiagnosis,
-          confidence: diagnosis.confidence,
-          severity: diagnosis.severity,
-          urgency: diagnosis.urgency,
-          needsDoctorImmediately: diagnosis.needsDoctorImmediately,
-          recommendations: diagnosis.recommendations,
-          medications: diagnosis.medications,
-          warning: diagnosis.warning,
-          whenToSeekHelp: diagnosis.whenToSeekHelp,
-          disclaimer: diagnosis.disclaimer,
-        },
-        timestamp: new Date(),
+        type: aiResponse.type,
+        message: aiResponse.message,
+        questionsAskedSoFar:
+          aiResponse.questionsAskedSoFar || session.questionsAsked,
+        isReadyToAssess: aiResponse.isReadyToAssess || false,
+        assessment: aiResponse.assessment || null,
+        sessionPhase: session.phase,
       },
     });
   } catch (error) {
-    console.error("Error processing symptoms:", error);
+    console.error("Error in diagnosis sendMessage:", error);
     res.status(500).json({
       success: false,
-      message: "Error processing symptoms",
+      message: "Error processing your message. Please try again.",
       error: error.message,
     });
   }
 };
 
 // Get diagnosis history for a session
-export const getDiagnosisHistory = async (req, res) => {
+export const getSessionHistory = async (req, res) => {
   try {
     const { sessionId } = req.params;
     const userId = req.userId;
 
     const session = await DiagnosisSession.findOne({ sessionId });
     if (!session) {
-      return res.status(404).json({
-        success: false,
-        message: "Session not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Session not found" });
     }
 
-    // Verify user owns this session
     if (session.userId.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized access to this session",
-      });
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized" });
     }
 
-    // Filter out system messages if any
     const messages = session.messages.filter((msg) => msg.role !== "system");
 
     res.json({
@@ -205,15 +204,16 @@ export const getDiagnosisHistory = async (req, res) => {
           sessionId: session.sessionId,
           startTime: session.startTime,
           status: session.status,
+          phase: session.phase || "assessed",
+          questionsAsked: session.questionsAsked || 0,
         },
       },
     });
   } catch (error) {
     console.error("Error fetching diagnosis history:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching diagnosis history",
-    });
+    res
+      .status(500)
+      .json({ success: false, message: "Error fetching session history" });
   }
 };
 
@@ -224,13 +224,19 @@ export const getAllDiagnosisSessions = async (req, res) => {
 
     const sessions = await DiagnosisSession.find({ userId })
       .sort({ updatedAt: -1 })
-      .select("sessionId messages startTime updatedAt status");
+      .select(
+        "sessionId messages startTime updatedAt status phase questionsAsked"
+      );
 
-    // Format sessions with preview
     const formattedSessions = sessions.map((session) => {
       const userMessages = session.messages.filter((m) => m.role === "user");
-      const lastDiagnosis = session.messages
-        .filter((m) => m.role === "assistant" && m.diagnosis)
+      // Check both new assessment and old diagnosis fields for backward compat
+      const lastAssessment = session.messages
+        .filter(
+          (m) =>
+            m.role === "assistant" &&
+            (m.assessment?.primaryCondition || m.diagnosis?.primaryDiagnosis)
+        )
         .pop();
 
       return {
@@ -238,12 +244,27 @@ export const getAllDiagnosisSessions = async (req, res) => {
         startTime: session.startTime,
         updatedAt: session.updatedAt,
         status: session.status,
+        phase: session.phase || "assessed",
+        questionsAsked: session.questionsAsked || 0,
         messageCount: session.messages.length,
         preview: {
-          symptoms: userMessages[0]?.content?.substring(0, 150) || "",
-          diagnosis: lastDiagnosis?.diagnosis?.primaryDiagnosis || "",
-          severity: lastDiagnosis?.diagnosis?.severity || "",
-          urgency: lastDiagnosis?.diagnosis?.urgency || "",
+          mainConcern: userMessages[0]?.content?.substring(0, 150) || "",
+          primaryCondition:
+            lastAssessment?.assessment?.primaryCondition ||
+            lastAssessment?.diagnosis?.primaryDiagnosis ||
+            "",
+          severity:
+            lastAssessment?.assessment?.severity ||
+            lastAssessment?.diagnosis?.severity ||
+            "",
+          urgency:
+            lastAssessment?.assessment?.urgency ||
+            lastAssessment?.diagnosis?.urgency ||
+            "",
+          shouldVisitDoctor:
+            lastAssessment?.assessment?.shouldVisitDoctor ??
+            lastAssessment?.diagnosis?.needsDoctorImmediately ??
+            null,
         },
       };
     });
@@ -255,162 +276,178 @@ export const getAllDiagnosisSessions = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching diagnosis sessions:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching diagnosis sessions",
-    });
+    res
+      .status(500)
+      .json({ success: false, message: "Error fetching sessions" });
   }
 };
 
-// Get all medications for a user
-export const getUserMedications = async (req, res) => {
+// Save user's location to a session
+export const saveUserLocation = async (req, res) => {
   try {
+    const { sessionId } = req.params;
+    const { latitude, longitude, address } = req.body;
     const userId = req.userId;
-    const { status, limit = 50 } = req.query;
 
-    const query = { userId };
-    if (status) {
-      query.status = status;
+    const session = await DiagnosisSession.findOne({ sessionId });
+    if (!session) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Session not found" });
     }
 
-    const medications = await Medication.find(query)
-      .sort({ timestamp: -1 })
-      .limit(parseInt(limit))
-      .populate("diagnosisSessionId", "sessionId startTime");
+    if (session.userId.toString() !== userId.toString()) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized" });
+    }
 
-    // Group by diagnosis session
-    const grouped = medications.reduce((acc, med) => {
-      const sessionId = med.sessionId || "unknown";
-      if (!acc[sessionId]) {
-        acc[sessionId] = [];
+    session.userLocation = {
+      latitude,
+      longitude,
+      address: address || "",
+      sharedAt: new Date(),
+    };
+
+    await session.save();
+
+    res.json({
+      success: true,
+      message: "Location saved successfully",
+    });
+  } catch (error) {
+    console.error("Error saving user location:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Error saving location" });
+  }
+};
+
+// Get nearby hospitals/clinics using Overpass API (OpenStreetMap)
+export const getNearbyFacilities = async (req, res) => {
+  try {
+    const { latitude, longitude, radius = 5000 } = req.query;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        message: "Latitude and longitude are required",
+      });
+    }
+
+    const lat = parseFloat(latitude);
+    const lon = parseFloat(longitude);
+    const rad = parseInt(radius);
+
+    // Simplified Overpass API query - only hospitals and clinics for faster response
+    const overpassQuery = `
+      [out:json][timeout:25];
+      (
+        node["amenity"="hospital"](around:${rad},${lat},${lon});
+        way["amenity"="hospital"](around:${rad},${lat},${lon});
+        node["amenity"="clinic"](around:${rad},${lat},${lon});
+        way["amenity"="clinic"](around:${rad},${lat},${lon});
+      );
+      out center body;
+    `;
+
+    console.log(`Fetching facilities within ${rad}m of (${lat}, ${lon})...`);
+
+    const overpassResponse = await axios.get(
+      "https://overpass-api.de/api/interpreter",
+      {
+        params: { data: overpassQuery },
+        timeout: 45000, // Increased to 45 seconds
       }
-      acc[sessionId].push(med);
-      return acc;
-    }, {});
+    );
+
+    console.log(`Overpass API returned ${overpassResponse.data.elements?.length || 0} facilities`);
+
+    const elements = overpassResponse.data.elements || [];
+
+    // Process and format results
+    const facilities = elements
+      .map((el) => {
+        const facilityLat = el.lat || el.center?.lat;
+        const facilityLon = el.lon || el.center?.lon;
+
+        if (!facilityLat || !facilityLon) return null;
+
+        // Calculate distance using Haversine formula
+        const distance = haversineDistance(lat, lon, facilityLat, facilityLon);
+
+        // Determine facility type
+        let type = "other";
+        if (el.tags?.amenity === "hospital") type = "hospital";
+        else if (el.tags?.amenity === "clinic") type = "clinic";
+        else if (el.tags?.amenity === "doctors") type = "doctor";
+        else if (el.tags?.amenity === "pharmacy") type = "pharmacy";
+
+        return {
+          name: el.tags?.name || el.tags?.["name:en"] || `Unnamed ${type}`,
+          type,
+          latitude: facilityLat,
+          longitude: facilityLon,
+          distance: Math.round(distance),
+          address:
+            el.tags?.["addr:full"] || el.tags?.["addr:street"] || "",
+          phone: el.tags?.phone || el.tags?.["contact:phone"] || "",
+          website: el.tags?.website || el.tags?.["contact:website"] || "",
+          openingHours: el.tags?.opening_hours || "",
+          emergency: el.tags?.emergency === "yes",
+          googleMapsUrl: `https://www.google.com/maps/dir/?api=1&destination=${facilityLat},${facilityLon}`,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 15);
 
     res.json({
       success: true,
       data: {
-        medications,
-        grouped,
-        totalCount: medications.length,
-        byStatus: {
-          suggested: medications.filter((m) => m.status === "suggested").length,
-          taken: medications.filter((m) => m.status === "taken").length,
-          discontinued: medications.filter((m) => m.status === "discontinued")
-            .length,
-        },
+        facilities,
+        searchRadius: rad,
+        totalFound: facilities.length,
+        userLocation: { latitude: lat, longitude: lon },
       },
     });
   } catch (error) {
-    console.error("Error fetching user medications:", error);
-    res.status(500).json({
+    console.error("Error fetching nearby facilities:", error.message);
+    
+    // Distinguish between timeout and other errors
+    const isTimeout = error.code === 'ECONNABORTED' || error.message.includes('timeout');
+    
+    // Return graceful error response
+    res.status(200).json({
       success: false,
-      message: "Error fetching medications",
+      data: {
+        facilities: [],
+        searchRadius: parseInt(req.query.radius) || 5000,
+        totalFound: 0,
+        errorType: isTimeout ? 'timeout' : 'api_error',
+        error: isTimeout 
+          ? "The hospital search is taking longer than expected. Please try again in a moment or search manually on Google Maps."
+          : "Unable to fetch nearby facilities at the moment. Please try searching manually on Google Maps.",
+        googleMapsSearchUrl: `https://www.google.com/maps/search/hospitals+near+me/@${req.query.latitude},${req.query.longitude},14z`,
+      },
     });
   }
 };
 
-// Update medication status
-export const updateMedicationStatus = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, notes } = req.body;
-    const userId = req.userId;
-
-    if (!["suggested", "taken", "discontinued"].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status value",
-      });
-    }
-
-    const medication = await Medication.findOne({ _id: id, userId });
-    if (!medication) {
-      return res.status(404).json({
-        success: false,
-        message: "Medication not found",
-      });
-    }
-
-    medication.status = status;
-    if (notes) {
-      medication.notes = notes;
-    }
-
-    await medication.save();
-
-    res.json({
-      success: true,
-      message: "Medication status updated",
-      data: medication,
-    });
-  } catch (error) {
-    console.error("Error updating medication status:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating medication status",
-    });
-  }
-};
-
-// Add note to medication
-export const addMedicationNote = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { note } = req.body;
-    const userId = req.userId;
-
-    const medication = await Medication.findOne({ _id: id, userId });
-    if (!medication) {
-      return res.status(404).json({
-        success: false,
-        message: "Medication not found",
-      });
-    }
-
-    medication.notes = note;
-    await medication.save();
-
-    res.json({
-      success: true,
-      message: "Note added to medication",
-      data: medication,
-    });
-  } catch (error) {
-    console.error("Error adding medication note:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error adding note",
-    });
-  }
-};
-
-// Get detailed medication information
-export const getMedicationDetails = async (req, res) => {
-  try {
-    const { name } = req.query;
-
-    if (!name) {
-      return res.status(400).json({
-        success: false,
-        message: "Medication name is required",
-      });
-    }
-
-    console.log(`📊 Fetching medication info for: ${name}`);
-    const medicationInfo = await getMedicationInfo(name);
-
-    res.json({
-      success: true,
-      data: medicationInfo,
-    });
-  } catch (error) {
-    console.error("Error fetching medication details:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching medication information",
-      error: error.message,
-    });
-  }
-};
+/**
+ * Haversine formula to calculate distance between two lat/lon points
+ * @returns {number} Distance in meters
+ */
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
