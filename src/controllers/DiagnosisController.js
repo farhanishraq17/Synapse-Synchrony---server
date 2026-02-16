@@ -376,12 +376,22 @@ export const getNearbyFacilities = async (req, res) => {
         // Calculate distance using Haversine formula
         const distance = haversineDistance(lat, lon, facilityLat, facilityLon);
 
-        // Determine facility type
-        let type = "other";
-        if (el.tags?.amenity === "hospital") type = "hospital";
-        else if (el.tags?.amenity === "clinic") type = "clinic";
-        else if (el.tags?.amenity === "doctors") type = "doctor";
-        else if (el.tags?.amenity === "pharmacy") type = "pharmacy";
+        // Determine facility type - STRICT validation
+        let type = null;
+        const amenity = el.tags?.amenity;
+        
+        if (amenity === "hospital") {
+          type = "hospital";
+        } else if (amenity === "clinic") {
+          type = "clinic";
+        } else {
+          // Log unexpected results for debugging
+          console.warn(
+            `Skipping non-medical facility: "${el.tags?.name || 'Unnamed'}" with amenity="${amenity}"`,
+            { tags: el.tags }
+          );
+          return null; // FILTER OUT - only accept hospitals and clinics
+        }
 
         return {
           name: el.tags?.name || el.tags?.["name:en"] || `Unnamed ${type}`,
@@ -398,9 +408,11 @@ export const getNearbyFacilities = async (req, res) => {
           googleMapsUrl: `https://www.google.com/maps/dir/?api=1&destination=${facilityLat},${facilityLon}`,
         };
       })
-      .filter(Boolean)
+      .filter(Boolean) // Remove nulls (invalid facilities)
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 15);
+
+    console.log(`Returning ${facilities.length} validated medical facilities`);
 
     res.json({
       success: true,
