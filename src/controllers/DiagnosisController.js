@@ -135,8 +135,6 @@ export const sendMessage = async (req, res) => {
     if (aiResponse.assessment) {
       assistantMessage.assessment = {
         possibleConditions: aiResponse.assessment.possibleConditions || [],
-        primaryCondition: aiResponse.assessment.primaryCondition || "",
-        confidence: aiResponse.assessment.confidence || "low",
         severity: aiResponse.assessment.severity || "mild",
         urgency: aiResponse.assessment.urgency || "non-urgent",
         shouldVisitDoctor: aiResponse.assessment.shouldVisitDoctor ?? true,
@@ -230,12 +228,12 @@ export const getAllDiagnosisSessions = async (req, res) => {
 
     const formattedSessions = sessions.map((session) => {
       const userMessages = session.messages.filter((m) => m.role === "user");
-      // Check both new assessment and old diagnosis fields for backward compat
+      // Find last assistant message that has assessment data
       const lastAssessment = session.messages
         .filter(
           (m) =>
             m.role === "assistant" &&
-            (m.assessment?.primaryCondition || m.diagnosis?.primaryDiagnosis)
+            (m.assessment?.urgency || m.assessment?.reliefSuggestions?.length > 0 || m.diagnosis?.primaryDiagnosis)
         )
         .pop();
 
@@ -249,10 +247,6 @@ export const getAllDiagnosisSessions = async (req, res) => {
         messageCount: session.messages.length,
         preview: {
           mainConcern: userMessages[0]?.content?.substring(0, 150) || "",
-          primaryCondition:
-            lastAssessment?.assessment?.primaryCondition ||
-            lastAssessment?.diagnosis?.primaryDiagnosis ||
-            "",
           severity:
             lastAssessment?.assessment?.severity ||
             lastAssessment?.diagnosis?.severity ||

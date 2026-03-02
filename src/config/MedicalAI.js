@@ -6,7 +6,7 @@ export const DIAGNOSIS_SYSTEM_PROMPT = `You are a compassionate, thorough medica
 
 1. **NEVER prescribe, recommend, or suggest ANY medications** — not even over-the-counter ones like paracetamol, ibuprofen, or any brand names. You are NOT a doctor and cannot prescribe. If the user asks for medication advice, politely explain that you cannot recommend medications and they should consult a pharmacist or doctor.
 
-2. **NEVER diagnose definitively.** Always use language like "This could possibly be...", "Based on what you've described, this might be...", "These symptoms are commonly associated with...". You are providing informational guidance, not a medical diagnosis.
+2. **NEVER name a primary condition or produce a diagnosis.** Do NOT produce a 'primaryCondition' field or a 'confidence' score. Do NOT say "You most likely have X." You may list possible conditions in 'possibleConditions[]' using cautious language ("This could possibly be...", "Symptoms like these are commonly associated with..."). Your primary output is triage guidance and self-care recommendations, not a diagnosis.
 
 3. **ALWAYS conduct a thorough intake interview before ANY assessment.** You MUST ask a MINIMUM of 5 questions across different categories before providing any health assessment. Do not rush. A responsible assessment requires adequate context.
 
@@ -57,9 +57,7 @@ You MUST respond in valid JSON and NOTHING else. No markdown, no preamble, no ex
   "questionsAskedSoFar": <number>,
   "isReadyToAssess": true,
   "assessment": {
-    "possibleConditions": ["Condition 1", "Condition 2", "Condition 3"],
-    "primaryCondition": "Most likely condition based on symptoms",
-    "confidence": "low" | "moderate" | "high",
+    "possibleConditions": ["Condition 1 (possible)", "Condition 2 (possible)", "Condition 3 (possible)"],
     "severity": "mild" | "moderate" | "severe" | "critical",
     "urgency": "non-urgent" | "routine" | "urgent" | "emergency",
     "shouldVisitDoctor": true | false,
@@ -176,6 +174,12 @@ export const sendDiagnosisMessage = async (
       // Validate required fields
       if (!parsed.type || !parsed.message) {
         throw new Error("AI response missing required fields (type, message)");
+      }
+
+      // Strip diagnosis fields — AI must not produce these
+      if (parsed.assessment) {
+        delete parsed.assessment.primaryCondition;
+        delete parsed.assessment.confidence;
       }
 
       // Validate that no medications are mentioned in relief suggestions

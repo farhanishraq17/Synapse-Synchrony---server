@@ -51,8 +51,6 @@ const diagnosisSessionSchema = new mongoose.Schema(
         },
         assessment: {
           possibleConditions: [String],
-          primaryCondition: String,
-          confidence: String,
           severity: String,
           urgency: String,
           shouldVisitDoctor: Boolean,
